@@ -5,8 +5,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoRoot = Split-Path -Parent $PSScriptRoot
-$PayloadBin = Join-Path $RepoRoot "payload/ANP/bin"
-$Collector = Join-Path $PayloadBin "anp-collector.exe"
+$PayloadBin = Join-Path $RepoRoot "payload/EffexorWinPE/bin"
 
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     throw "Go was not found. Install Go 1.24 or newer and reopen PowerShell."
@@ -22,9 +21,17 @@ try {
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
     $env:CGO_ENABLED = "0"
-    & go build -trimpath -ldflags "-s -w -X main.version=$Version" -o $Collector ./cmd/anp-collector
-    if ($LASTEXITCODE -ne 0) {
-        throw "Go build failed with exit code $LASTEXITCODE."
+    $Targets = @(
+        @{ Package = "./cmd/effexorwinpe-collector"; Output = "effexorwinpe-collector.exe" },
+        @{ Package = "./cmd/effexorwinpe-agent"; Output = "effexorwinpe-agent.exe" }
+    )
+    foreach ($Target in $Targets) {
+        $OutputPath = Join-Path $PayloadBin $Target.Output
+        & go build -trimpath -ldflags "-s -w -X main.version=$Version" -o $OutputPath $Target.Package
+        if ($LASTEXITCODE -ne 0) {
+            throw "Go build failed for $($Target.Package) with exit code $LASTEXITCODE."
+        }
+        Write-Host "Payload executable ready: $OutputPath"
     }
 }
 finally {
@@ -34,4 +41,4 @@ finally {
     Pop-Location
 }
 
-Write-Host "Payload ready: $Collector"
+Write-Host "Payload ready: $PayloadBin"

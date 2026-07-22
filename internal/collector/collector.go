@@ -48,7 +48,7 @@ func Collect(version string) (diagnostics.Report, error) {
 		ReportID:      id,
 		CollectedAt:   time.Now().UTC(),
 		Collector: diagnostics.Collector{
-			Name:    "anp-collector",
+			Name:    "effexorwinpe-collector",
 			Version: version,
 		},
 		Environment: diagnostics.Environment{

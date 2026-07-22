@@ -1,6 +1,6 @@
 /out/
-/payload/ANP/bin/
-/payload/ANP/reports/
+/payload/EffexorWinPE/bin/
+/payload/EffexorWinPE/reports/
 /drivers/local/
 /tools/cache/
 *.iso

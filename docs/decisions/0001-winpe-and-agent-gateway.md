@@ -1,4 +1,4 @@
-# ADR 0001: WinPE client with a shared agent core
+# ADR 0001: WinPE client with a dedicated agent gateway
 
 - Status: accepted
 - Date: 2026-07-22
@@ -9,7 +9,7 @@ The rescue environment needs reliable offline Windows diagnostics and optional A
 
 ## Decision
 
-Use Microsoft WinPE as the minimal Windows repair environment. Keep collection and approved typed execution local. Send technician-reviewed reports through a narrow HTTPS gateway to the existing shared ANP agent core. Store provider credentials only on the backend.
+Use Microsoft WinPE as the minimal Windows repair environment. Keep collection and approved typed execution local. Send technician-reviewed reports through a narrow HTTPS gateway dedicated to EffexorWinPE. Store provider credentials only on the backend.
 
 Wi-Fi and a full VPN client are not MVP dependencies. Wired Ethernet, phone USB tethering when supported, or an external VPN router are preferred. A separate portable full-Windows environment may be added later for software that requires ordinary Windows services and drivers.
 

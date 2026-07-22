@@ -1,6 +1,6 @@
-# ANP Rescue
+# EffexorWinPE
 
-ANP Rescue is a technician-focused Windows recovery and diagnostics environment. It combines a reproducible WinPE build, a privacy-aware diagnostic collector, and a narrow client boundary for the shared ANP agent backend.
+EffexorWinPE is a personal technician-focused Windows recovery and diagnostics environment. It combines a reproducible WinPE build, a privacy-aware diagnostic collector, an offline diagnostic preflight, and a narrow client boundary for its optional AI agent gateway.
 
 The project is intentionally not a repack of a third-party rescue ISO. The repository stores source code, manifests, and build scripts; Microsoft files, Windows images, drivers, and third-party utilities are supplied at build time.
 
@@ -12,24 +12,30 @@ Bootstrap/MVP foundation:
 - dependency-free Go diagnostic collector;
 - versioned JSON diagnostic contract;
 - read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
+- offline evidence-backed diagnostic preflight with confidence, follow-up questions, limitations, and typed read-only next steps;
 - payload and driver manifests;
 - safety and secret-handling rules;
 - initial CI workflow.
 
-No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. A graphical launcher and backend connection come next.
+No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report and offline preflight assessment. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. A graphical launcher and backend connection come next.
 
 ## Repository layout
 
 ```text
 build/                 Windows build and validation scripts
-cmd/anp-collector/     WinPE diagnostic collector executable
+cmd/effexorwinpe-collector/  WinPE diagnostic collector executable
+cmd/effexorwinpe-agent/      Offline preflight and future gateway client
 contracts/             Versioned API and report schemas
 docs/                  Architecture, roadmap, and decisions
 drivers/               Documentation and local driver staging area
 internal/              Collector and report implementation
 manifests/              Auditable image contents
-payload/ANP/            Files copied into X:\\ANP in WinPE
+payload/EffexorWinPE/         Files copied into X:\\EffexorWinPE in WinPE
 ```
+
+The image payload is copied from the closed allowlist in `manifests/image-payload.json`.
+Files merely present under `payload/EffexorWinPE` are never included automatically, so
+local reports, credentials, and other ignored build-host data cannot leak into an ISO.
 
 ## Build prerequisites
 
@@ -49,17 +55,17 @@ Set-ExecutionPolicy -Scope Process Bypass
 ./build/Build-WinPE.ps1
 ```
 
-The ISO is written to `out/anp-rescue-amd64.iso` by default.
+The ISO is written to `out/EffexorWinPE-amd64.iso` by default.
 
 On current ADK releases, pass `-BootEx` to create media signed for the UEFI 2023 CA. Keep the ordinary build available while testing older service hardware; this compatibility choice will become an explicit release profile before public distribution.
 
 ## Safety model
 
-ANP Rescue separates inspection from repair:
+EffexorWinPE separates inspection from repair:
 
 1. Collectors read system state and produce a report.
 2. The technician reviews exactly what may leave the device.
-3. The client sends approved data to the ANP backend using a revocable device token.
+3. The client sends approved data to the EffexorWinPE agent gateway using a revocable device token.
 4. The backend proposes bounded actions.
 5. Any disk or OS mutation requires a local confirmation and is logged.
 

@@ -16,7 +16,7 @@ if (-not $OutputDirectory) {
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $WorkingDirectory = Join-Path $OutputDirectory "winpe-$Architecture"
 $MountDirectory = Join-Path $WorkingDirectory "mount"
-$IsoPath = Join-Path $OutputDirectory "anp-rescue-$Architecture.iso"
+$IsoPath = Join-Path $OutputDirectory "EffexorWinPE-$Architecture.iso"
 
 $AdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Assessment and Deployment Kit"
 $WinPERoot = Join-Path $AdkRoot "Windows Preinstallation Environment"
@@ -87,8 +87,11 @@ try {
         }
     }
 
-    $PayloadTarget = Join-Path $MountDirectory "ANP"
-    Copy-Item -Recurse -Force (Join-Path $RepoRoot "payload/ANP") $PayloadTarget
+    $PayloadTarget = Join-Path $MountDirectory "EffexorWinPE"
+    & (Join-Path $PSScriptRoot "Copy-ImagePayload.ps1") `
+        -SourceRoot $RepoRoot `
+        -DestinationRoot $PayloadTarget `
+        -ManifestPath (Join-Path $RepoRoot "manifests/image-payload.json")
 
     if ($IncludeLocalDrivers) {
         $Drivers = Join-Path $RepoRoot "drivers/local"
@@ -104,8 +107,9 @@ try {
     $Startnet = @"
 wpeinit
 wpeutil InitializeNetwork
-if not exist X:\ANP\reports mkdir X:\ANP\reports
-X:\ANP\bin\anp-collector.exe --output X:\ANP\reports\initial.json
+if not exist X:\EffexorWinPE\reports mkdir X:\EffexorWinPE\reports
+X:\EffexorWinPE\bin\effexorwinpe-collector.exe --output X:\EffexorWinPE\reports\initial.json
+X:\EffexorWinPE\bin\effexorwinpe-agent.exe --input X:\EffexorWinPE\reports\initial.json --output X:\EffexorWinPE\reports\initial-diagnosis.json
 cmd.exe
 "@
     Set-Content -Path (Join-Path $MountDirectory "Windows/System32/startnet.cmd") -Value $Startnet -Encoding ASCII

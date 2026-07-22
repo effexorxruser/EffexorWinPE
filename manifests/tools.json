@@ -2,10 +2,10 @@
   "schema_version": 1,
   "tools": [
     {
-      "id": "anp-collector",
+      "id": "effexorwinpe-collector",
       "kind": "first-party",
-      "source": "cmd/anp-collector",
-      "destination": "ANP/bin/anp-collector.exe",
+      "source": "cmd/effexorwinpe-collector",
+      "destination": "EffexorWinPE/bin/effexorwinpe-collector.exe",
       "redistribution": "allowed",
       "checksum": "generated-at-build-time"
     }

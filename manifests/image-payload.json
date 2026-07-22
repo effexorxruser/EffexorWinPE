@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "files": [
+    {
+      "source": "payload/EffexorWinPE/README.txt",
+      "destination": "README.txt"
+    },
+    {
+      "source": "payload/EffexorWinPE/config/client.example.json",
+      "destination": "config/client.example.json"
+    },
+    {
+      "source": "payload/EffexorWinPE/bin/effexorwinpe-collector.exe",
+      "destination": "bin/effexorwinpe-collector.exe"
+    },
+    {
+      "source": "payload/EffexorWinPE/bin/effexorwinpe-agent.exe",
+      "destination": "bin/effexorwinpe-agent.exe"
+    }
+  ]
+}

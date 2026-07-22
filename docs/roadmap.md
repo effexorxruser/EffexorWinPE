@@ -18,6 +18,7 @@
 - [ ] Inspect BCD entries and correlate them with detected Windows installations.
 - [ ] Export JSON and readable HTML reports to technician storage.
 - [ ] Add an explicit privacy preview before export.
+- [x] Add an offline evidence-backed preflight with typed read-only next steps.
 
 ## M2 — technician launcher
 
@@ -28,7 +29,7 @@
 
 ## M3 — shared agent integration
 
-- [ ] Finalize the gateway endpoint with the main ANP repository.
+- [ ] Implement the dedicated EffexorWinPE gateway endpoint.
 - [ ] Implement device enrollment and revocation.
 - [ ] Add report redaction and size limits.
 - [ ] Return evidence, uncertainty, and proposed typed operations.

@@ -2,7 +2,7 @@ package diagnostics
 
 import "time"
 
-const SchemaVersion = "1.1.0"
+const SchemaVersion = "1.2.0"
 
 type Report struct {
 	SchemaVersion string         `json:"schema_version"`
