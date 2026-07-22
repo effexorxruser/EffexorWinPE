@@ -29,7 +29,7 @@
 
 ## M3 — shared agent integration
 
-- [ ] Finalize the gateway endpoint with the main ANP repository.
+- [ ] Implement the dedicated EffexorWinPE gateway endpoint.
 - [ ] Implement device enrollment and revocation.
 - [ ] Add report redaction and size limits.
 - [ ] Return evidence, uncertainty, and proposed typed operations.

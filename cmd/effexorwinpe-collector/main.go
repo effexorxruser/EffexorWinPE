@@ -28,6 +28,6 @@ func main() {
 	}
 
 	if *output != "-" {
-		fmt.Printf("Diagnostic report written to %s\n", *output)
+		fmt.Printf("EffexorWinPE diagnostic report written to %s\n", *output)
 	}
 }

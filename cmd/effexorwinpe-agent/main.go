@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 	if *output != "-" {
-		fmt.Printf("ANP agent %s wrote offline preflight to %s\n", version, *output)
+		fmt.Printf("EffexorWinPE agent %s wrote offline preflight to %s\n", version, *output)
 	}
 }
 

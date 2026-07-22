@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://effexorwinpe.local/contracts/diagnosis.schema.json",
-  "title": "ANP Rescue diagnostic assessment",
+  "title": "EffexorWinPE diagnostic assessment",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "report_id", "generated_at", "mode", "summary", "findings", "questions", "next_steps", "limitations"],

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
-  title: ANP Rescue Agent Gateway
+  title: EffexorWinPE Agent Gateway
   version: 0.2.0
-  description: Narrow client boundary between rescue media and the shared ANP backend.
+  description: Narrow client boundary between EffexorWinPE rescue media and its model-backed agent service.
 servers:
   - url: https://api.example.invalid/rescue/v1
 paths:

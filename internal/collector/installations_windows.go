@@ -36,7 +36,7 @@ func readOfflineWindowsVersion(softwareHive string, driveLetter rune) *diagnosti
 		return nil
 	}
 
-	mountName := fmt.Sprintf("ANPOFFLINE_%d_%c", os.Getpid(), driveLetter)
+	mountName := fmt.Sprintf("EFFEXORWINPE_OFFLINE_%d_%c", os.Getpid(), driveLetter)
 	mountPath := `HKLM\` + mountName
 	if output, err := exec.Command("reg.exe", "load", mountPath, softwareHive).CombinedOutput(); err != nil {
 		_ = output

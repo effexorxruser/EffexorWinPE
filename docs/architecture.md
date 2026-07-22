@@ -2,16 +2,14 @@
 
 ## System boundary
 
-ANP Rescue is one interface to the shared ANP agent platform. Telegram, the website, and rescue media may share the same domain logic and backend, but each remains a replaceable router/client.
+EffexorWinPE is a self-contained personal repair environment. Its boot media remains useful offline; optional model-backed reasoning is isolated behind a dedicated EffexorWinPE gateway so provider credentials never enter the ISO.
 
 ```mermaid
 flowchart TD
-    PE["ANP Rescue WinPE"] --> PRE["Offline preflight"]
-    PRE --> GW["ANP agent gateway"]
-    WEB["Web interface"] --> GW
-    TG["Telegram interface"] --> GW
-    GW --> CORE["Shared agent core"]
-    CORE --> LLM["Model provider"]
+    PE["EffexorWinPE"] --> PRE["Offline preflight"]
+    PRE --> GW["EffexorWinPE gateway"]
+    GW --> POLICY["Policy and audit"]
+    POLICY --> LLM["Model provider"]
 ```
 
 The rescue repository owns boot media composition, local diagnostics, deterministic preflight, report review, and execution of explicitly approved typed operations. It does not own general model-backed reasoning, API secrets, customer records, or the canonical repair knowledge base.
@@ -23,7 +21,7 @@ The rescue repository owns boot media composition, local diagnostics, determinis
 | Immutable image | Collector, launcher, schemas, public configuration | No reusable secrets or client data |
 | Technician storage | Device token, exported reports, optional tool cache | Encrypt where practical; removable and revocable |
 | Client machine | Disks, registry, logs, dumps | Read-only until a repair action is confirmed |
-| ANP backend | API credentials, policy, model access, audit log | Authenticated, rate-limited, centrally revocable |
+| EffexorWinPE gateway | API credentials, policy, model access, audit log | Authenticated, rate-limited, centrally revocable |
 
 ## Diagnostic flow
 

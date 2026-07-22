@@ -20,6 +20,9 @@ func TestCollectProducesVersionedReport(t *testing.T) {
 	if report.Collector.Version != "test" {
 		t.Fatalf("collector version = %q, want test", report.Collector.Version)
 	}
+	if report.Collector.Name != "effexorwinpe-collector" {
+		t.Fatalf("collector name = %q, want effexorwinpe-collector", report.Collector.Name)
+	}
 	if len(report.Checks) == 0 {
 		t.Fatal("checks are empty")
 	}

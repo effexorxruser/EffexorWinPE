@@ -18,21 +18,21 @@ jobs:
           cache: false
       - name: Test
         run: go test ./...
-      - name: Cross-compile WinPE collector
+      - name: Cross-compile EffexorWinPE executables
         env:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: "0"
         run: |
-          go build -trimpath -o /tmp/anp-collector.exe ./cmd/anp-collector
-          go build -trimpath -o /tmp/anp-agent.exe ./cmd/anp-agent
+          go build -trimpath -o /tmp/effexorwinpe-collector.exe ./cmd/effexorwinpe-collector
+          go build -trimpath -o /tmp/effexorwinpe-agent.exe ./cmd/effexorwinpe-agent
       - name: Validate JSON files
         run: |
           jq empty contracts/diagnostic-report.schema.json
           jq empty contracts/diagnosis.schema.json
           jq empty manifests/tools.json
           jq empty manifests/drivers.json
-          jq empty payload/ANP/config/client.example.json
+          jq empty payload/EffexorWinPE/config/client.example.json
 
   windows-smoke:
     runs-on: windows-latest
@@ -46,18 +46,18 @@ jobs:
         run: go test ./...
       - name: Build WinPE executables
         run: |
-          go build -trimpath -o "$env:RUNNER_TEMP/anp-collector.exe" ./cmd/anp-collector
-          go build -trimpath -o "$env:RUNNER_TEMP/anp-agent.exe" ./cmd/anp-agent
+          go build -trimpath -o "$env:RUNNER_TEMP/effexorwinpe-collector.exe" ./cmd/effexorwinpe-collector
+          go build -trimpath -o "$env:RUNNER_TEMP/effexorwinpe-agent.exe" ./cmd/effexorwinpe-agent
       - name: Collect, analyze, and validate report
         shell: pwsh
         run: |
           $reportPath = Join-Path $env:RUNNER_TEMP "diagnostic-report.json"
-          & "$env:RUNNER_TEMP/anp-collector.exe" --output $reportPath
+          & "$env:RUNNER_TEMP/effexorwinpe-collector.exe" --output $reportPath
           if ($LASTEXITCODE -ne 0) {
             throw "Collector failed with exit code $LASTEXITCODE"
           }
           $report = Get-Content $reportPath -Raw | ConvertFrom-Json
-          if ($report.schema_version -ne "1.1.0") {
+          if ($report.schema_version -ne "1.2.0") {
             throw "Unexpected schema version: $($report.schema_version)"
           }
           foreach ($section in @("hardware", "storage", "boot", "windows_installations", "checks", "privacy")) {
@@ -66,7 +66,7 @@ jobs:
             }
           }
           $diagnosisPath = Join-Path $env:RUNNER_TEMP "diagnosis.json"
-          & "$env:RUNNER_TEMP/anp-agent.exe" --input $reportPath --output $diagnosisPath
+          & "$env:RUNNER_TEMP/effexorwinpe-agent.exe" --input $reportPath --output $diagnosisPath
           if ($LASTEXITCODE -ne 0) {
             throw "Agent preflight failed with exit code $LASTEXITCODE"
           }

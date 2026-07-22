@@ -4,7 +4,7 @@ import "testing"
 
 func TestParseRegistryValue(t *testing.T) {
 	output := `
-HKEY_LOCAL_MACHINE\ANPOFFLINE\Microsoft\Windows NT\CurrentVersion
+HKEY_LOCAL_MACHINE\EFFEXORWINPE_OFFLINE\Microsoft\Windows NT\CurrentVersion
     ProductName    REG_SZ    Windows 11 Pro
 `
 	if got := parseRegistryValue(output); got != "Windows 11 Pro" {

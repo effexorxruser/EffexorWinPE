@@ -28,7 +28,7 @@ func Analyze(report diagnostics.Report, now time.Time) (diagnosis.Assessment, er
 		Questions:     []diagnosis.Question{},
 		NextSteps:     []diagnosis.NextStep{},
 		Limitations: []string{
-			"Offline preflight uses conservative deterministic rules; it is not the shared ANP model-backed diagnosis.",
+			"Offline preflight uses conservative deterministic rules; it is not the model-backed EffexorWinPE agent diagnosis.",
 			"Missing providers or counters reduce confidence and never imply that hardware is healthy.",
 			"This assessment contains read-only next steps only and cannot execute repair commands.",
 		},

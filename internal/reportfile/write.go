@@ -20,7 +20,7 @@ func Write(path string, report diagnostics.Report, pretty bool) error {
 		return fmt.Errorf("create report directory: %w", err)
 	}
 
-	temporary, err := os.CreateTemp(directory, ".anp-report-*.tmp")
+	temporary, err := os.CreateTemp(directory, ".effexorwinpe-report-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create temporary report: %w", err)
 	}
