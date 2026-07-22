@@ -18,6 +18,7 @@
 - [ ] Inspect BCD entries and correlate them with detected Windows installations.
 - [ ] Export JSON and readable HTML reports to technician storage.
 - [ ] Add an explicit privacy preview before export.
+- [x] Add an offline evidence-backed preflight with typed read-only next steps.
 
 ## M2 — technician launcher
 

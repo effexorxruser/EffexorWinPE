@@ -106,6 +106,7 @@ wpeinit
 wpeutil InitializeNetwork
 if not exist X:\ANP\reports mkdir X:\ANP\reports
 X:\ANP\bin\anp-collector.exe --output X:\ANP\reports\initial.json
+X:\ANP\bin\anp-agent.exe --input X:\ANP\reports\initial.json --output X:\ANP\reports\initial-diagnosis.json
 cmd.exe
 "@
     Set-Content -Path (Join-Path $MountDirectory "Windows/System32/startnet.cmd") -Value $Startnet -Encoding ASCII

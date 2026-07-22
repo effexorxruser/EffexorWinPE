@@ -12,17 +12,19 @@ Bootstrap/MVP foundation:
 - dependency-free Go diagnostic collector;
 - versioned JSON diagnostic contract;
 - read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
+- offline evidence-backed diagnostic preflight with confidence, follow-up questions, limitations, and typed read-only next steps;
 - payload and driver manifests;
 - safety and secret-handling rules;
 - initial CI workflow.
 
-No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. A graphical launcher and backend connection come next.
+No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report and offline preflight assessment. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. A graphical launcher and backend connection come next.
 
 ## Repository layout
 
 ```text
 build/                 Windows build and validation scripts
 cmd/anp-collector/     WinPE diagnostic collector executable
+cmd/anp-agent/         Offline preflight and future gateway client
 contracts/             Versioned API and report schemas
 docs/                  Architecture, roadmap, and decisions
 drivers/               Documentation and local driver staging area

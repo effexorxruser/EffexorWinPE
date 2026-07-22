@@ -6,14 +6,15 @@ ANP Rescue is one interface to the shared ANP agent platform. Telegram, the webs
 
 ```mermaid
 flowchart TD
-    PE["ANP Rescue WinPE"] --> GW["ANP agent gateway"]
+    PE["ANP Rescue WinPE"] --> PRE["Offline preflight"]
+    PRE --> GW["ANP agent gateway"]
     WEB["Web interface"] --> GW
     TG["Telegram interface"] --> GW
     GW --> CORE["Shared agent core"]
     CORE --> LLM["Model provider"]
 ```
 
-The rescue repository owns boot media composition, local diagnostics, report review, and execution of explicitly approved typed operations. It does not own general reasoning, API secrets, customer records, or the canonical repair knowledge base.
+The rescue repository owns boot media composition, local diagnostics, deterministic preflight, report review, and execution of explicitly approved typed operations. It does not own general model-backed reasoning, API secrets, customer records, or the canonical repair knowledge base.
 
 ## Trust zones
 
@@ -29,11 +30,12 @@ The rescue repository owns boot media composition, local diagnostics, report rev
 1. Boot WinPE and initialize wired networking.
 2. Discover disks and offline Windows installations.
 3. Run read-only collectors and create a versioned local report.
-4. Preview/redact report fields locally.
-5. Optionally submit approved data to the gateway.
-6. Receive findings and proposed typed actions.
-7. Preview the exact effect and require technician confirmation.
-8. Execute locally and append the result to the audit log.
+4. Produce a conservative offline preflight with evidence references and read-only next steps.
+5. Preview/redact report fields locally.
+6. Optionally submit approved data to the gateway.
+7. Receive model-backed findings and proposed typed actions.
+8. Preview the exact effect and require technician confirmation.
+9. Execute locally and append the result to the audit log.
 
 ## Why Go for WinPE executables
 

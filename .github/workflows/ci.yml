@@ -23,10 +23,13 @@ jobs:
           GOOS: windows
           GOARCH: amd64
           CGO_ENABLED: "0"
-        run: go build -trimpath -o /tmp/anp-collector.exe ./cmd/anp-collector
+        run: |
+          go build -trimpath -o /tmp/anp-collector.exe ./cmd/anp-collector
+          go build -trimpath -o /tmp/anp-agent.exe ./cmd/anp-agent
       - name: Validate JSON files
         run: |
           jq empty contracts/diagnostic-report.schema.json
+          jq empty contracts/diagnosis.schema.json
           jq empty manifests/tools.json
           jq empty manifests/drivers.json
           jq empty payload/ANP/config/client.example.json
@@ -41,9 +44,11 @@ jobs:
           cache: false
       - name: Test Windows implementation
         run: go test ./...
-      - name: Build collector
-        run: go build -trimpath -o "$env:RUNNER_TEMP/anp-collector.exe" ./cmd/anp-collector
-      - name: Collect and validate report
+      - name: Build WinPE executables
+        run: |
+          go build -trimpath -o "$env:RUNNER_TEMP/anp-collector.exe" ./cmd/anp-collector
+          go build -trimpath -o "$env:RUNNER_TEMP/anp-agent.exe" ./cmd/anp-agent
+      - name: Collect, analyze, and validate report
         shell: pwsh
         run: |
           $reportPath = Join-Path $env:RUNNER_TEMP "diagnostic-report.json"
@@ -58,5 +63,24 @@ jobs:
           foreach ($section in @("hardware", "storage", "boot", "windows_installations", "checks", "privacy")) {
             if ($null -eq $report.$section) {
               throw "Missing report section: $section"
+            }
+          }
+          $diagnosisPath = Join-Path $env:RUNNER_TEMP "diagnosis.json"
+          & "$env:RUNNER_TEMP/anp-agent.exe" --input $reportPath --output $diagnosisPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Agent preflight failed with exit code $LASTEXITCODE"
+          }
+          $diagnosis = Get-Content $diagnosisPath -Raw | ConvertFrom-Json
+          if ($diagnosis.schema_version -ne "0.1.0" -or $diagnosis.mode -ne "offline_preflight") {
+            throw "Unexpected diagnosis contract or mode"
+          }
+          foreach ($section in @("findings", "questions", "next_steps", "limitations")) {
+            if ($null -eq $diagnosis.$section) {
+              throw "Missing diagnosis section: $section"
+            }
+          }
+          foreach ($step in $diagnosis.next_steps) {
+            if ($step.risk -ne "read_only" -or $step.requires_confirmation -ne $false) {
+              throw "Offline preflight emitted a mutating operation"
             }
           }
