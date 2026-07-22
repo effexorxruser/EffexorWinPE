@@ -25,17 +25,18 @@ func TestDiagnoseRequiresHTTPSAndApproval(t *testing.T) {
 }
 
 func TestSafeDiagnosisIDRejectsPathTraversal(t *testing.T) {
-	for _, value := range []string{"../diagnosis", "a/b", "", ".."} {
+	for _, value := range []string{"../diagnosis", "a/b", "", "..", "diagnosis-1", "diagnosis-0000000000000000000000000000000G"} {
 		if safeDiagnosisID(value) {
 			t.Fatalf("safeDiagnosisID(%q) = true, want false", value)
 		}
 	}
-	if !safeDiagnosisID("diagnosis_123.test") {
-		t.Fatal("safeDiagnosisID() rejected a bounded opaque id")
+	if !safeDiagnosisID("diagnosis-00000000000000000000000000000001") {
+		t.Fatal("safeDiagnosisID() rejected a valid gateway id")
 	}
 }
 
 func TestDiagnoseSubmitsApprovedContextAndPollsForAssessment(t *testing.T) {
+	const diagnosisID = "diagnosis-00000000000000000000000000000001"
 	polls := 0
 	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		if request.Header.Get("Authorization") != "Bearer device-secret" {
@@ -51,8 +52,8 @@ func TestDiagnoseSubmitsApprovedContextAndPollsForAssessment(t *testing.T) {
 				t.Error("request was not marked approved")
 			}
 			writer.WriteHeader(http.StatusAccepted)
-			_, _ = writer.Write([]byte(`{"diagnosis_id":"diagnosis-1","status":"queued"}`))
-		case request.Method == http.MethodGet && request.URL.Path == "/rescue/v1/diagnoses/diagnosis-1":
+			_, _ = writer.Write([]byte(`{"diagnosis_id":"` + diagnosisID + `","status":"queued"}`))
+		case request.Method == http.MethodGet && request.URL.Path == "/rescue/v1/diagnoses/"+diagnosisID:
 			polls++
 			writer.Header().Set("Content-Type", "application/json")
 			if polls == 1 {
@@ -78,11 +79,36 @@ func TestDiagnoseSubmitsApprovedContextAndPollsForAssessment(t *testing.T) {
 	defer server.Close()
 
 	client := Client{HTTPClient: server.Client(), PollInterval: time.Millisecond}
-	result, err := client.Diagnose(context.Background(), server.URL+"/rescue/v1", "device-secret", DiagnosisRequest{TechnicianApproved: true})
+	result, err := client.Diagnose(context.Background(), server.URL+"/rescue/v1", "device-secret", testDiagnosisRequest(t))
 	if err != nil {
 		t.Fatalf("Diagnose() error = %v", err)
 	}
 	if result.Mode != diagnosis.ModeOnlineAgent || polls != 2 {
 		t.Fatalf("unexpected result or poll count: result=%+v polls=%d", result, polls)
+	}
+}
+
+func TestDiagnoseRejectsUnsafeGatewayAssessmentLocally(t *testing.T) {
+	const diagnosisID = "diagnosis-00000000000000000000000000000002"
+	request := testDiagnosisRequest(t)
+	unsafe := testOnlineAssessment(request)
+	unsafe.NextSteps[0].Operation = "run_powershell"
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, httpRequest *http.Request) {
+		switch httpRequest.Method {
+		case http.MethodPost:
+			writer.WriteHeader(http.StatusAccepted)
+			_, _ = writer.Write([]byte(`{"diagnosis_id":"` + diagnosisID + `","status":"queued"}`))
+		case http.MethodGet:
+			_ = json.NewEncoder(writer).Encode(unsafe)
+		default:
+			http.NotFound(writer, httpRequest)
+		}
+	}))
+	defer server.Close()
+
+	client := Client{HTTPClient: server.Client(), PollInterval: time.Millisecond}
+	_, err := client.Diagnose(context.Background(), server.URL+"/rescue/v1", "device-secret", request)
+	if err == nil || !strings.Contains(err.Error(), "unknown operation") {
+		t.Fatalf("Diagnose() error = %v, want local operation rejection", err)
 	}
 }

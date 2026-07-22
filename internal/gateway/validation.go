@@ -68,6 +68,7 @@ func SanitizeDiagnosisRequest(request DiagnosisRequest) DiagnosisRequest {
 	request.DiagnosticReport.Environment.Hostname = ""
 	request.DiagnosticReport.Privacy.ContainsPersonalData = false
 	request.Session.LatestAssessment = nil
+	request.Session.Events = nil
 	return request
 }
 
@@ -106,11 +107,11 @@ func addJSONPaths(prefix string, value any, result map[string]struct{}) error {
 }
 
 func collectJSONPaths(prefix string, value any, result map[string]struct{}) {
-	if prefix != "" {
-		result[prefix] = struct{}{}
-	}
 	switch typed := value.(type) {
 	case map[string]any:
+		if len(typed) == 0 && prefix != "" {
+			result[prefix] = struct{}{}
+		}
 		for key, child := range typed {
 			path := key
 			if prefix != "" {
@@ -119,8 +120,15 @@ func collectJSONPaths(prefix string, value any, result map[string]struct{}) {
 			collectJSONPaths(path, child, result)
 		}
 	case []any:
+		if len(typed) == 0 && prefix != "" {
+			result[prefix] = struct{}{}
+		}
 		for index, child := range typed {
 			collectJSONPaths(fmt.Sprintf("%s[%d]", prefix, index), child, result)
+		}
+	default:
+		if prefix != "" {
+			result[prefix] = struct{}{}
 		}
 	}
 }

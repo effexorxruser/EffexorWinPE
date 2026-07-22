@@ -117,7 +117,7 @@ func TestOpenAIResponsesProviderRejectsModelOperationOutsideAllowlist(t *testing
 		Summary: diagnosis.Summary{Headline: "Unsafe", HighestSeverity: diagnosis.SeverityWarning, FindingCount: 1},
 		Findings: []diagnosis.Finding{{
 			ID: "unsafe.finding", Title: "Unsafe", Severity: diagnosis.SeverityWarning, Confidence: diagnosis.ConfidenceLow,
-			Rationale: "Test", EvidenceRefs: []string{"checks"}, SourceRefs: []string{},
+			Rationale: "Test", EvidenceRefs: []string{"checks[0].status"}, SourceRefs: []string{},
 		}},
 		Questions: []diagnosis.Question{},
 		NextSteps: []diagnosis.NextStep{{
@@ -164,6 +164,38 @@ func TestOpenAIResponsesProviderDoesNotExposeProviderErrorBody(t *testing.T) {
 	_, err = provider.Analyze(context.Background(), testDiagnosisRequest(t))
 	if err == nil || strings.Contains(err.Error(), "server-api-key leaked") {
 		t.Fatalf("Analyze() error = %v", err)
+	}
+}
+
+func TestOpenAIResponsesProviderRejectsTrailingStructuredOutput(t *testing.T) {
+	request := testDiagnosisRequest(t)
+	structured, _ := json.Marshal(modelAssessment{
+		Summary:     diagnosis.Summary{Headline: "Test", HighestSeverity: diagnosis.SeverityInfo},
+		Findings:    []diagnosis.Finding{},
+		Questions:   []diagnosis.Question{},
+		NextSteps:   []diagnosis.NextStep{},
+		Limitations: []string{"Test limitation"},
+	})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(writer).Encode(map[string]any{
+			"status": "completed",
+			"output": []any{map[string]any{
+				"type": "message",
+				"content": []any{map[string]any{
+					"type": "output_text",
+					"text": string(structured) + `{}`,
+				}},
+			}},
+		})
+	}))
+	defer server.Close()
+	provider, err := NewOpenAIResponsesProvider(server.URL+"/v1", "server-api-key", "test-model", nil, false)
+	if err != nil {
+		t.Fatalf("NewOpenAIResponsesProvider() error = %v", err)
+	}
+	provider.HTTPClient = server.Client()
+	if _, err := provider.Analyze(context.Background(), request); err == nil || !strings.Contains(err.Error(), "trailing data") {
+		t.Fatalf("Analyze() error = %v, want trailing data rejection", err)
 	}
 }
 

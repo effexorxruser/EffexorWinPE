@@ -112,6 +112,9 @@ func (c Client) Diagnose(ctx context.Context, baseURL, token string, request Dia
 			if assessment.Mode != diagnosis.ModeOnlineAgent {
 				return diagnosis.Assessment{}, fmt.Errorf("gateway result has unexpected mode %q", assessment.Mode)
 			}
+			if err := ValidateOnlineAssessment(assessment, request); err != nil {
+				return diagnosis.Assessment{}, fmt.Errorf("gateway returned an invalid assessment: %w", err)
+			}
 			return assessment, nil
 		}
 	}
@@ -215,17 +218,16 @@ func responseError(response *http.Response) error {
 }
 
 func safeDiagnosisID(value string) bool {
-	if len(value) == 0 || len(value) > 128 {
+	const prefix = "diagnosis-"
+	const digestLength = 32
+	if len(value) != len(prefix)+digestLength || !strings.HasPrefix(value, prefix) {
 		return false
 	}
-	for _, character := range value {
-		if character >= 'a' && character <= 'z' ||
-			character >= 'A' && character <= 'Z' ||
-			character >= '0' && character <= '9' ||
-			character == '-' || character == '_' || character == '.' {
+	for _, character := range value[len(prefix):] {
+		if character >= '0' && character <= '9' || character >= 'a' && character <= 'f' {
 			continue
 		}
 		return false
 	}
-	return value != "." && value != ".."
+	return true
 }

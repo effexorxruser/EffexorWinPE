@@ -82,6 +82,9 @@ func TestEvidenceReferencesExcludeHostnameAndIncludeSessionNamespace(t *testing.
 		if path == "environment.hostname" {
 			t.Fatal("hostname remained in the model evidence catalog")
 		}
+		if path == "storage" || path == "storage.disks" || path == "checks" {
+			t.Fatalf("non-leaf evidence path entered the model catalog: %s", path)
+		}
 		if path == "storage.disks[0].health_status" {
 			foundStorage = true
 		}
@@ -94,6 +97,18 @@ func TestEvidenceReferencesExcludeHostnameAndIncludeSessionNamespace(t *testing.
 	}
 	if !foundStorage || !foundSession {
 		t.Fatalf("missing expected evidence paths: storage=%v session=%v", foundStorage, foundSession)
+	}
+}
+
+func TestSanitizeDiagnosisRequestDropsQueueOnlySessionData(t *testing.T) {
+	request := testDiagnosisRequest(t)
+	request.Session.LatestAssessment = new(diagnosis.Assessment)
+	sanitized := SanitizeDiagnosisRequest(request)
+	if sanitized.DiagnosticReport.Environment.Hostname != "" || sanitized.DiagnosticReport.Privacy.ContainsPersonalData {
+		t.Fatal("sanitized request retained excluded report metadata")
+	}
+	if sanitized.Session.LatestAssessment != nil || len(sanitized.Session.Events) != 0 {
+		t.Fatal("sanitized request retained derived assessment or event log")
 	}
 }
 

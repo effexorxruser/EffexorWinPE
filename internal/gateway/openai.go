@@ -280,6 +280,9 @@ func (provider *OpenAIResponsesProvider) Analyze(ctx context.Context, request Di
 	if err := decoder.Decode(&modelResult); err != nil {
 		return diagnosis.Assessment{}, fmt.Errorf("decode structured diagnosis: %w", err)
 	}
+	if err := requireJSONEOF(decoder); err != nil {
+		return diagnosis.Assessment{}, fmt.Errorf("decode structured diagnosis: trailing data: %w", err)
+	}
 
 	now := time.Now
 	if provider.Now != nil {

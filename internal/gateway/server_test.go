@@ -34,8 +34,8 @@ func testTokenVerifier(t *testing.T, tokens ...string) TokenVerifier {
 func TestGatewayServerAuthenticatesQueuesSanitizesAndReturnsAssessment(t *testing.T) {
 	request := testDiagnosisRequest(t)
 	analyzer := AnalyzerFunc(func(_ context.Context, received DiagnosisRequest) (diagnosis.Assessment, error) {
-		if received.DiagnosticReport.Environment.Hostname != "" || received.DiagnosticReport.Privacy.ContainsPersonalData {
-			t.Error("gateway passed hostname or privacy marker to analyzer")
+		if received.DiagnosticReport.Environment.Hostname != "" || received.DiagnosticReport.Privacy.ContainsPersonalData || len(received.Session.Events) != 0 {
+			t.Error("gateway passed excluded report or session metadata to analyzer")
 		}
 		return testOnlineAssessment(received), nil
 	})
