@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://anp-rescue.local/contracts/diagnostic-report.schema.json",
+  "title": "ANP Rescue diagnostic report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "report_id",
+    "collected_at",
+    "collector",
+    "environment",
+    "windows_installations",
+    "checks",
+    "privacy"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0.0" },
+    "report_id": { "type": "string", "minLength": 16 },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "const": "anp-collector" },
+        "version": { "type": "string", "minLength": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_os", "runtime_arch"],
+      "properties": {
+        "runtime_os": { "type": "string" },
+        "runtime_arch": { "type": "string" },
+        "hostname": {
+          "type": "string",
+          "description": "Potentially personal data; the UI must disclose it before upload."
+        }
+      }
+    },
+    "windows_installations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["root", "system_hive"],
+        "properties": {
+          "root": { "type": "string" },
+          "system_hive": { "type": "string" }
+        }
+      }
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "enum": ["ok", "warning", "error", "unknown"] },
+          "summary": { "type": "string" }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contains_personal_data", "excluded_by_default"],
+      "properties": {
+        "contains_personal_data": { "type": "boolean" },
+        "excluded_by_default": {
+          "type": "array",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

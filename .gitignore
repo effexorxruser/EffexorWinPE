@@ -1,0 +1,15 @@
+/out/
+/payload/ANP/bin/
+/payload/ANP/reports/
+/drivers/local/
+/tools/cache/
+*.iso
+*.wim
+*.vhd
+*.vhdx
+*.swp
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example

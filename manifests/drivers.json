@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "driver_sets": [],
+  "notes": [
+    "Locally staged drivers belong in drivers/local and are excluded from Git.",
+    "Every future driver set needs vendor, supported hardware IDs, source URL, version, checksum, and redistribution status."
+  ]
+}

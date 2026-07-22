@@ -1,0 +1,43 @@
+openapi: 3.1.0
+info:
+  title: ANP Rescue Agent Gateway
+  version: 0.1.0
+  description: Narrow client boundary between rescue media and the shared ANP backend.
+servers:
+  - url: https://api.example.invalid/rescue/v1
+paths:
+  /diagnoses:
+    post:
+      summary: Request analysis of a technician-approved diagnostic report
+      operationId: createDiagnosis
+      security:
+        - deviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ./diagnostic-report.schema.json
+      responses:
+        "202":
+          description: Analysis accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [diagnosis_id, status]
+                properties:
+                  diagnosis_id:
+                    type: string
+                  status:
+                    const: queued
+        "401":
+          description: Device credential is missing, expired, or revoked
+        "413":
+          description: Diagnostic report exceeds the allowed size
+components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque-device-token
