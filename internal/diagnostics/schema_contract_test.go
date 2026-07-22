@@ -1,39 +1,45 @@
 package diagnostics_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
-func TestDiagnosticReportSchemaDefinesBitLockerConditionals(t *testing.T) {
+func TestDiagnosticReportSchemaBitLockerConditionals(t *testing.T) {
 	t.Parallel()
-	schema := loadSchema(t)
-	storage, ok := schema["$defs"].(map[string]any)["storage"].(map[string]any)
-	if !ok {
-		t.Fatal("schema is missing $defs.storage")
-	}
-	allOf, ok := storage["allOf"].([]any)
-	if !ok || len(allOf) < 2 {
-		t.Fatalf("storage.allOf = %#v, want at least two conditional rules", storage["allOf"])
-	}
-	raw, err := json.Marshal(allOf)
-	if err != nil {
-		t.Fatalf("marshal allOf: %v", err)
-	}
-	text := string(raw)
-	for _, part := range []string{`"const":"unavailable"`, `"type":"null"`, `"enum":["ok","partial"]`, `"type":"array"`} {
-		if !strings.Contains(text, part) {
-			t.Fatalf("storage.allOf is missing %s: %s", part, text)
+	schema := compileReportSchema(t)
+
+	baseReport := func(storage map[string]any) map[string]any {
+		return map[string]any{
+			"schema_version": "1.3.0",
+			"report_id":      "report000000000001",
+			"collected_at":   "2026-07-22T12:00:00Z",
+			"collector":      map[string]any{"name": "effexorwinpe-collector", "version": "test"},
+			"environment":    map[string]any{"runtime_os": "windows", "runtime_arch": "amd64"},
+			"hardware": map[string]any{
+				"firmware_mode":    "uefi",
+				"system":           map[string]any{},
+				"processor":        map[string]any{"cores": 0, "logical_processors": 0},
+				"memory":           map[string]any{"total_physical_bytes": 0},
+				"network_adapters": []any{},
+			},
+			"storage":               storage,
+			"boot":                  map[string]any{"firmware_mode": "uefi", "bcd_stores": []any{}},
+			"windows_installations": []any{},
+			"checks":                []any{},
+			"privacy": map[string]any{
+				"contains_personal_data": false,
+				"excluded_by_default":    []any{},
+			},
 		}
 	}
-}
 
-func TestBitLockerSchemaConditionalsPositiveAndNegative(t *testing.T) {
-	t.Parallel()
 	tests := []struct {
 		name    string
 		storage map[string]any
@@ -58,7 +64,7 @@ func TestBitLockerSchemaConditionalsPositiveAndNegative(t *testing.T) {
 			wantOK: true,
 		},
 		{
-			name: "partial with volume",
+			name: "partial with explicit null fields",
 			storage: map[string]any{
 				"disks": []any{}, "drive_health": []any{}, "partitions": []any{},
 				"bitlocker_volumes": []any{map[string]any{
@@ -88,47 +94,30 @@ func TestBitLockerSchemaConditionalsPositiveAndNegative(t *testing.T) {
 			wantOK: false,
 		},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			err := validateStorageBitLockerConditionals(test.storage)
+			raw, err := json.Marshal(baseReport(test.storage))
+			if err != nil {
+				t.Fatalf("Marshal() error = %v", err)
+			}
+			var instance any
+			if err := json.Unmarshal(raw, &instance); err != nil {
+				t.Fatalf("Unmarshal instance: %v", err)
+			}
+			err = schema.Validate(instance)
 			if test.wantOK && err != nil {
-				t.Fatalf("validateStorageBitLockerConditionals() error = %v", err)
+				t.Fatalf("schema.Validate() error = %v", err)
 			}
 			if !test.wantOK && err == nil {
-				t.Fatal("validateStorageBitLockerConditionals() error = nil, want failure")
+				t.Fatal("schema.Validate() error = nil, want failure")
 			}
 		})
 	}
 }
 
-func validateStorageBitLockerConditionals(storage map[string]any) error {
-	inventory, _ := storage["bitlocker_inventory"].(map[string]any)
-	status, _ := inventory["status"].(string)
-	volumes, hasVolumes := storage["bitlocker_volumes"]
-	switch status {
-	case "unavailable":
-		if hasVolumes && volumes != nil {
-			return errString("bitlocker_volumes must be null when status is unavailable")
-		}
-	case "ok", "partial":
-		if !hasVolumes || volumes == nil {
-			return errString("bitlocker_volumes must be an array when status is ok or partial")
-		}
-		if _, ok := volumes.([]any); !ok {
-			return errString("bitlocker_volumes must be an array when status is ok or partial")
-		}
-	default:
-		return errString("invalid bitlocker_inventory.status")
-	}
-	return nil
-}
-
-type errString string
-
-func (err errString) Error() string { return string(err) }
-
-func loadSchema(t *testing.T) map[string]any {
+func compileReportSchema(t *testing.T) *jsonschema.Schema {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -139,9 +128,14 @@ func loadSchema(t *testing.T) map[string]any {
 	if err != nil {
 		t.Fatalf("read schema: %v", err)
 	}
-	var schema map[string]any
-	if err := json.Unmarshal(raw, &schema); err != nil {
-		t.Fatalf("decode schema: %v", err)
+	compiler := jsonschema.NewCompiler()
+	compiler.Draft = jsonschema.Draft2020
+	if err := compiler.AddResource("https://effexorwinpe.local/contracts/diagnostic-report.schema.json", bytes.NewReader(raw)); err != nil {
+		t.Fatalf("AddResource() error = %v", err)
+	}
+	schema, err := compiler.Compile("https://effexorwinpe.local/contracts/diagnostic-report.schema.json")
+	if err != nil {
+		t.Fatalf("Compile() error = %v", err)
 	}
 	return schema
 }

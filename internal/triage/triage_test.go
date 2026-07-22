@@ -89,6 +89,32 @@ func TestAnalyzeHealthyEvidenceStaysLowConfidence(t *testing.T) {
 	}
 }
 
+func TestAnalyzePartialBitLockerCreatesSourcesIncompleteWithoutHealthyClaim(t *testing.T) {
+	report := baseReport()
+	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{
+		MountPoint: "C:",
+	}}
+	report.Storage.BitLockerInventory = diagnostics.BitLockerInventory{
+		Status: diagnostics.BitLockerStatusPartial,
+		Error:  "One or more BitLocker volume fields were incomplete",
+	}
+	report.Checks = []diagnostics.Check{{
+		ID:      "storage.bitlocker_inventory",
+		Status:  "unknown",
+		Summary: "BitLocker inventory is partial: One or more BitLocker volume fields were incomplete",
+	}}
+	assessment, err := Analyze(report, time.Now())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if !hasFinding(assessment, "evidence.sources-incomplete") {
+		t.Fatal("partial BitLocker must create evidence.sources-incomplete")
+	}
+	if hasFinding(assessment, "preflight.no-obvious-fault") {
+		t.Fatal("partial BitLocker must not allow preflight.no-obvious-fault")
+	}
+}
+
 func TestAnalyzeMigratedLegacyPhysicalSmokeReport(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "diagnostics", "testdata", "physical-smoke-legacy-1.2.0.json"))
 	if err != nil {

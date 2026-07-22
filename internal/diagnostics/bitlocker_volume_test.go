@@ -75,15 +75,7 @@ func TestBitLockerVolumeNullFieldsRoundTrip(t *testing.T) {
 
 func TestDecodeReportV13RejectsUnavailableWithArray(t *testing.T) {
 	t.Parallel()
-	raw := []byte(`{
-		"schema_version":"1.3.0","report_id":"report000000000001","collected_at":"2026-07-22T12:00:00Z",
-		"collector":{"name":"effexorwinpe-collector","version":"test"},
-		"environment":{"runtime_os":"windows","runtime_arch":"amd64"},
-		"hardware":{"firmware_mode":"uefi","system":{},"processor":{"cores":0,"logical_processors":0},"memory":{"total_physical_bytes":0},"network_adapters":[]},
-		"storage":{"disks":[],"drive_health":[],"partitions":[],"bitlocker_volumes":[],"bitlocker_inventory":{"status":"unavailable"}},
-		"boot":{"firmware_mode":"uefi","bcd_stores":[]},"windows_installations":[],"checks":[],
-		"privacy":{"contains_personal_data":false,"excluded_by_default":[]}
-	}`)
+	raw := minimalReportJSON(`"bitlocker_volumes":[],"bitlocker_inventory":{"status":"unavailable"}`)
 	if _, err := DecodeReportJSON(raw); err == nil {
 		t.Fatal("DecodeReportJSON() error = nil, want unavailable+array rejection")
 	}
@@ -91,18 +83,45 @@ func TestDecodeReportV13RejectsUnavailableWithArray(t *testing.T) {
 
 func TestDecodeReportV13RejectsOKWithNullVolumes(t *testing.T) {
 	t.Parallel()
-	raw := []byte(`{
+	raw := minimalReportJSON(`"bitlocker_volumes":null,"bitlocker_inventory":{"status":"ok"}`)
+	if _, err := DecodeReportJSON(raw); err == nil {
+		t.Fatal("DecodeReportJSON() error = nil, want ok+null rejection")
+	}
+}
+
+func TestDecodeReportV13RejectsOmittedBitLockerNullableFields(t *testing.T) {
+	t.Parallel()
+	raw := minimalReportJSON(`"bitlocker_volumes":[{"mount_point":"C:"}],"bitlocker_inventory":{"status":"partial","error":"incomplete"}`)
+	if _, err := DecodeReportJSON(raw); err == nil {
+		t.Fatal("DecodeReportJSON() error = nil, want omitted nullable field rejection")
+	}
+}
+
+func TestDecodeReportV13AcceptsExplicitNullBitLockerFields(t *testing.T) {
+	t.Parallel()
+	raw := minimalReportJSON(`"bitlocker_volumes":[{"mount_point":"C:","volume_status":null,"protection_status":null,"lock_status":null,"encryption_method":null}],"bitlocker_inventory":{"status":"partial","error":"incomplete"}`)
+	report, err := DecodeReportJSON(raw)
+	if err != nil {
+		t.Fatalf("DecodeReportJSON() error = %v", err)
+	}
+	if report.Storage.BitLockerInventory.Status != BitLockerStatusPartial {
+		t.Fatalf("status = %q, want partial", report.Storage.BitLockerInventory.Status)
+	}
+	if report.Storage.BitLockerVolumes[0].VolumeStatus != nil {
+		t.Fatal("volume_status must remain null")
+	}
+}
+
+func minimalReportJSON(storageTail string) []byte {
+	return []byte(`{
 		"schema_version":"1.3.0","report_id":"report000000000001","collected_at":"2026-07-22T12:00:00Z",
 		"collector":{"name":"effexorwinpe-collector","version":"test"},
 		"environment":{"runtime_os":"windows","runtime_arch":"amd64"},
 		"hardware":{"firmware_mode":"uefi","system":{},"processor":{"cores":0,"logical_processors":0},"memory":{"total_physical_bytes":0},"network_adapters":[]},
-		"storage":{"disks":[],"drive_health":[],"partitions":[],"bitlocker_volumes":null,"bitlocker_inventory":{"status":"ok"}},
+		"storage":{"disks":[],"drive_health":[],"partitions":[],` + storageTail + `},
 		"boot":{"firmware_mode":"uefi","bcd_stores":[]},"windows_installations":[],"checks":[],
 		"privacy":{"contains_personal_data":false,"excluded_by_default":[]}
 	}`)
-	if _, err := DecodeReportJSON(raw); err == nil {
-		t.Fatal("DecodeReportJSON() error = nil, want ok+null rejection")
-	}
 }
 
 func TestMigrateLegacyPhysicalSmokeReportV12(t *testing.T) {

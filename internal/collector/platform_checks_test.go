@@ -1,6 +1,7 @@
 package collector
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -47,6 +48,33 @@ func TestBuildPlatformChecksDeduplicatesUnavailableBitLocker(t *testing.T) {
 	}
 }
 
+func TestBuildPlatformChecksPartialBitLockerCreatesOneUnknownCheck(t *testing.T) {
+	t.Parallel()
+	storage := diagnostics.Storage{
+		BitLockerVolumes: []diagnostics.BitLockerVolume{{MountPoint: "C:"}},
+		BitLockerInventory: diagnostics.BitLockerInventory{
+			Status: diagnostics.BitLockerStatusPartial,
+			Error:  "One or more BitLocker volume fields were incomplete",
+		},
+	}
+	checks := buildPlatformChecks(storage, 0, 1, nil)
+	unknownBitLocker := 0
+	for _, check := range checks {
+		if check.ID == "storage.bitlocker_inventory" {
+			unknownBitLocker++
+			if check.Status != "unknown" {
+				t.Fatalf("status = %q, want unknown", check.Status)
+			}
+			if !strings.Contains(check.Summary, "partial") {
+				t.Fatalf("summary = %q, want partial", check.Summary)
+			}
+		}
+	}
+	if unknownBitLocker != 1 {
+		t.Fatalf("storage.bitlocker_inventory unknown checks = %d, want 1", unknownBitLocker)
+	}
+}
+
 func TestFormatBitLockerInventorySummary(t *testing.T) {
 	t.Parallel()
 	ok := diagnostics.Storage{
@@ -61,5 +89,77 @@ func TestFormatBitLockerInventorySummary(t *testing.T) {
 	}
 	if got := formatBitLockerInventorySummary(unavailable); got != "BitLocker status unavailable (volume count unknown)" {
 		t.Fatalf("unavailable summary = %q", got)
+	}
+}
+
+func TestNormalizeBitLockerCmdletPayloadWithNullFieldsIsPartial(t *testing.T) {
+	t.Parallel()
+	// Simulated Get-BitLockerVolume JSON after null-safe conversion.
+	raw := []byte(`{
+		"bitlocker_volumes":[{
+			"mount_point":"C:",
+			"volume_status":null,
+			"protection_status":"On",
+			"lock_status":"Locked",
+			"encryption_method":"XTS_AES_256"
+		}],
+		"bitlocker_inventory":{"status":"ok"}
+	}`)
+	var storage diagnostics.Storage
+	if err := json.Unmarshal(raw, &storage); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	if storage.BitLockerVolumes[0].VolumeStatus != nil {
+		t.Fatalf("volume_status = %#v, want null", storage.BitLockerVolumes[0].VolumeStatus)
+	}
+	if storage.BitLockerVolumes[0].ProtectionStatus == nil || *storage.BitLockerVolumes[0].ProtectionStatus != "On" {
+		t.Fatalf("protection_status = %#v", storage.BitLockerVolumes[0].ProtectionStatus)
+	}
+	normalizeBitLockerInventory(&storage)
+	if storage.BitLockerInventory.Status != diagnostics.BitLockerStatusPartial {
+		t.Fatalf("status = %q, want partial", storage.BitLockerInventory.Status)
+	}
+}
+
+func TestNormalizeBitLockerCmdletPayloadCompleteRemainsOK(t *testing.T) {
+	t.Parallel()
+	raw := []byte(`{
+		"bitlocker_volumes":[{
+			"mount_point":"C:",
+			"volume_status":"FullyEncrypted",
+			"protection_status":"On",
+			"lock_status":"Locked",
+			"encryption_method":"XTS_AES_256"
+		}],
+		"bitlocker_inventory":{"status":"ok"}
+	}`)
+	var storage diagnostics.Storage
+	if err := json.Unmarshal(raw, &storage); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	normalizeBitLockerInventory(&storage)
+	if storage.BitLockerInventory.Status != diagnostics.BitLockerStatusOK {
+		t.Fatalf("status = %q, want ok", storage.BitLockerInventory.Status)
+	}
+	if storage.BitLockerVolumes[0].VolumeStatus == nil || *storage.BitLockerVolumes[0].VolumeStatus != "FullyEncrypted" {
+		t.Fatalf("volume_status = %#v", storage.BitLockerVolumes[0].VolumeStatus)
+	}
+}
+
+func TestInventoryPowerShellDoesNotStringCastBitLockerNullFields(t *testing.T) {
+	t.Parallel()
+	forbidden := []string{
+		"volume_status = [string]$_.VolumeStatus",
+		"protection_status = [string]$_.ProtectionStatus",
+		"lock_status = [string]$_.LockStatus",
+		"encryption_method = [string]$_.EncryptionMethod",
+	}
+	for _, snippet := range forbidden {
+		if strings.Contains(inventoryPowerShell, snippet) {
+			t.Fatalf("inventoryPowerShell still string-casts nullable BitLocker fields: %s", snippet)
+		}
+	}
+	if !strings.Contains(inventoryPowerShell, "Get-NullableString $volume.VolumeStatus") {
+		t.Fatal("inventoryPowerShell must use Get-NullableString for VolumeStatus")
 	}
 }

@@ -29,16 +29,8 @@ func buildPlatformChecks(storage diagnostics.Storage, networkAdapters int, bcdSt
 			Summary: sourceError,
 		})
 	}
-	if storage.BitLockerInventory.Status == diagnostics.BitLockerStatusUnavailable {
-		summary := "BitLocker inventory is unavailable"
-		if storage.BitLockerInventory.Error != "" {
-			summary = "BitLocker inventory is unavailable: " + storage.BitLockerInventory.Error
-		}
-		checks = append(checks, diagnostics.Check{
-			ID:      "storage.bitlocker_inventory",
-			Status:  "unknown",
-			Summary: summary,
-		})
+	if check := bitLockerInventoryCheck(storage.BitLockerInventory); check != nil {
+		checks = append(checks, *check)
 	}
 	if bcdStores == 0 {
 		checks = append(checks, diagnostics.Check{
@@ -72,13 +64,33 @@ func formatBitLockerInventorySummary(storage diagnostics.Storage) string {
 	}
 }
 
+func bitLockerInventoryCheck(inventory diagnostics.BitLockerInventory) *diagnostics.Check {
+	switch inventory.Status {
+	case diagnostics.BitLockerStatusUnavailable:
+		summary := "BitLocker inventory is unavailable"
+		if inventory.Error != "" {
+			summary = "BitLocker inventory is unavailable: " + inventory.Error
+		}
+		return &diagnostics.Check{ID: "storage.bitlocker_inventory", Status: "unknown", Summary: summary}
+	case diagnostics.BitLockerStatusPartial:
+		summary := "BitLocker inventory is partial"
+		if inventory.Error != "" {
+			summary = "BitLocker inventory is partial: " + inventory.Error
+		}
+		return &diagnostics.Check{ID: "storage.bitlocker_inventory", Status: "unknown", Summary: summary}
+	default:
+		return nil
+	}
+}
+
 func filterBitLockerSourceErrors(sourceErrors []string, inventory diagnostics.BitLockerInventory) []string {
 	if len(sourceErrors) == 0 {
 		return []string{}
 	}
 	filtered := make([]string, 0, len(sourceErrors))
 	for _, sourceError := range sourceErrors {
-		if inventory.Status == diagnostics.BitLockerStatusUnavailable && isBitLockerSourceError(sourceError) {
+		if isBitLockerSourceError(sourceError) &&
+			(inventory.Status == diagnostics.BitLockerStatusUnavailable || inventory.Status == diagnostics.BitLockerStatusPartial) {
 			continue
 		}
 		filtered = append(filtered, sourceError)
@@ -87,5 +99,7 @@ func filterBitLockerSourceErrors(sourceErrors []string, inventory diagnostics.Bi
 }
 
 func isBitLockerSourceError(summary string) bool {
-	return strings.Contains(strings.ToLower(summary), "bitlocker inventory is unavailable")
+	lower := strings.ToLower(summary)
+	return strings.Contains(lower, "bitlocker inventory is unavailable") ||
+		strings.Contains(lower, "bitlocker inventory is partial")
 }

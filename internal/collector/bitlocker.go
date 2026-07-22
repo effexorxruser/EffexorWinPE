@@ -36,5 +36,20 @@ func normalizeBitLockerInventory(storage *diagnostics.Storage) {
 		if storage.BitLockerVolumes == nil {
 			storage.BitLockerVolumes = []diagnostics.BitLockerVolume{}
 		}
+		if storage.BitLockerInventory.Status == diagnostics.BitLockerStatusOK && bitLockerVolumesHaveMissingFields(storage.BitLockerVolumes) {
+			storage.BitLockerInventory.Status = diagnostics.BitLockerStatusPartial
+			if storage.BitLockerInventory.Error == "" {
+				storage.BitLockerInventory.Error = "One or more BitLocker volume fields were incomplete"
+			}
+		}
 	}
+}
+
+func bitLockerVolumesHaveMissingFields(volumes []diagnostics.BitLockerVolume) bool {
+	for _, volume := range volumes {
+		if volume.VolumeStatus == nil || volume.ProtectionStatus == nil || volume.LockStatus == nil || volume.EncryptionMethod == nil {
+			return true
+		}
+	}
+	return false
 }

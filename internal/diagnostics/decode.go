@@ -72,6 +72,9 @@ func decodeReportV13(data []byte) (Report, error) {
 	if err := ValidateBitLockerContract(report.Storage); err != nil {
 		return Report{}, err
 	}
+	if err := validateRequiredNullableFields(data); err != nil {
+		return Report{}, err
+	}
 	normalizeDecodedReport(&report)
 	return report, nil
 }
@@ -289,6 +292,68 @@ func requireJSONEOF(decoder *json.Decoder) error {
 			return fmt.Errorf("diagnostic report contains trailing JSON data")
 		}
 		return err
+	}
+	return nil
+}
+
+var (
+	requiredDriveHealthNullableFields = []string{
+		"temperature_celsius",
+		"wear_percent",
+		"power_on_hours",
+		"read_errors_total",
+		"write_errors_total",
+	}
+	requiredBitLockerVolumeNullableFields = []string{
+		"volume_status",
+		"protection_status",
+		"lock_status",
+		"encryption_method",
+	}
+)
+
+// validateRequiredNullableFields ensures 1.3.0 reports explicitly include nullable
+// metric/status keys (JSON null is allowed; omission is not).
+func validateRequiredNullableFields(data []byte) error {
+	var root map[string]json.RawMessage
+	if err := json.Unmarshal(data, &root); err != nil {
+		return err
+	}
+	storageRaw, ok := root["storage"]
+	if !ok {
+		return fmt.Errorf("storage is required")
+	}
+	var storage map[string]json.RawMessage
+	if err := json.Unmarshal(storageRaw, &storage); err != nil {
+		return fmt.Errorf("decode storage: %w", err)
+	}
+	if err := validateObjectArrayNullableFields(storage["drive_health"], "storage.drive_health", requiredDriveHealthNullableFields); err != nil {
+		return err
+	}
+	volumesRaw, ok := storage["bitlocker_volumes"]
+	if !ok {
+		return fmt.Errorf("storage.bitlocker_volumes is required")
+	}
+	if string(volumesRaw) == "null" {
+		return nil
+	}
+	return validateObjectArrayNullableFields(volumesRaw, "storage.bitlocker_volumes", requiredBitLockerVolumeNullableFields)
+}
+
+func validateObjectArrayNullableFields(raw json.RawMessage, path string, required []string) error {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	var items []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &items); err != nil {
+		return fmt.Errorf("decode %s: %w", path, err)
+	}
+	for index, item := range items {
+		for _, field := range required {
+			if _, ok := item[field]; !ok {
+				return fmt.Errorf("%s[%d].%s is required and may be null, but must not be omitted", path, index, field)
+			}
+		}
 	}
 	return nil
 }
