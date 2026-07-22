@@ -19,6 +19,7 @@
 - [ ] Export JSON and readable HTML reports to technician storage.
 - [ ] Add an explicit privacy preview before export.
 - [x] Add an offline evidence-backed preflight with typed read-only next steps.
+- [x] Persist technician symptoms, follow-up answers, and assessment history in a resumable session.
 
 ## M2 — technician launcher
 
@@ -30,6 +31,7 @@
 ## M3 — shared agent integration
 
 - [ ] Implement the dedicated EffexorWinPE gateway endpoint.
+- [x] Implement the opt-in HTTPS gateway client and asynchronous diagnosis contract.
 - [ ] Implement device enrollment and revocation.
 - [ ] Add report redaction and size limits.
 - [ ] Return evidence, uncertainty, and proposed typed operations.

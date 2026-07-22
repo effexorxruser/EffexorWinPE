@@ -1,14 +1,14 @@
 openapi: 3.1.0
 info:
   title: EffexorWinPE Agent Gateway
-  version: 0.2.0
+  version: 0.3.0
   description: Narrow client boundary between EffexorWinPE rescue media and its model-backed agent service.
 servers:
   - url: https://api.example.invalid/rescue/v1
 paths:
   /diagnoses:
     post:
-      summary: Request analysis of a technician-approved diagnostic report
+      summary: Request analysis of a technician-approved diagnostic session
       operationId: createDiagnosis
       security:
         - deviceToken: []
@@ -17,7 +17,16 @@ paths:
         content:
           application/json:
             schema:
-              $ref: ./diagnostic-report.schema.json
+              type: object
+              additionalProperties: false
+              required: [diagnostic_report, session, technician_approved]
+              properties:
+                diagnostic_report:
+                  $ref: ./diagnostic-report.schema.json
+                session:
+                  $ref: ./diagnostic-session.schema.json
+                technician_approved:
+                  const: true
       responses:
         "202":
           description: Analysis accepted

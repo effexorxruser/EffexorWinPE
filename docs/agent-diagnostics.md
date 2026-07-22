@@ -1,6 +1,6 @@
 # Diagnostic agent boundary
 
-`effexorwinpe-agent.exe` is the first local layer of the technician assistant. In this milestone it runs an offline deterministic preflight over `diagnostic-report.schema.json` and writes a `diagnosis.schema.json` assessment.
+`effexorwinpe-agent.exe` is the first local layer of the technician assistant. It runs an offline deterministic preflight over `diagnostic-report.schema.json`, writes a `diagnosis.schema.json` assessment, and creates or resumes a `diagnostic-session.schema.json` session.
 
 It is intentionally useful without internet access, but it is not presented as the final AI diagnosis. Model-backed reasoning, the repair knowledge base, device-token policy, rate limits, and audit storage remain behind the dedicated EffexorWinPE gateway.
 
@@ -10,13 +10,19 @@ It is intentionally useful without internet access, but it is not presented as t
 2. `effexorwinpe-agent.exe` validates the report version.
 3. Conservative rules correlate missing sources, Windows installations, firmware/BCD visibility, storage health, reliability counters, and BitLocker access.
 4. The result contains findings, confidence, evidence references, focused follow-up questions, and typed read-only next steps.
-5. The technician receives an explicit limitation instead of a false `healthy` result when evidence is incomplete.
+5. The technician may record observed symptoms and typed answers interactively or with repeatable CLI flags; answered questions are removed from the next pending assessment.
+6. The session keeps a compact timeline and latest assessment without duplicating symptom text into its event log.
+7. The technician receives an explicit limitation instead of a false `healthy` result when evidence is incomplete.
 
 The executable never accepts or emits arbitrary command strings. Offline next steps are operation identifiers from a closed allowlist. They cannot write to the client system.
 
-## Later online flow
+## Optional online flow
 
-The same assessment contract will carry the gateway result in `online_agent` mode. The backend may propose a broader typed operation, but the local policy layer must reject unknown operations, preview the exact effect, require confirmation for mutations, and append the result to an audit log.
+The client now implements the narrow asynchronous gateway contract: submit an approved report and session, poll for an evidence-backed result, reject plaintext HTTP, bound request and response sizes, and save an `online_agent` assessment into the session history. The gateway backend itself is not part of the image and is not deployed yet.
+
+Supplying a gateway URL is not sufficient to upload. The technician must also provide a removable device-token file and `--approve-upload`. This makes online submission an explicit action after reviewing the report and free-text session context.
+
+The backend may eventually propose a broader typed operation, but the local policy layer must reject unknown operations, preview the exact effect, require confirmation for mutations, and append the result to an audit log.
 
 The OpenAI API key never crosses the gateway boundary. A removable technician device token will be separately enrolled, revocable, rate-limited, and stored outside the immutable ISO.
 

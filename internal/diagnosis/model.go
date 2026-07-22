@@ -6,6 +6,7 @@ const SchemaVersion = "0.1.0"
 
 const (
 	ModeOfflinePreflight = "offline_preflight"
+	ModeOnlineAgent      = "online_agent"
 
 	SeverityInfo     = "info"
 	SeverityWarning  = "warning"

@@ -30,6 +30,7 @@ jobs:
         run: |
           jq empty contracts/diagnostic-report.schema.json
           jq empty contracts/diagnosis.schema.json
+          jq empty contracts/diagnostic-session.schema.json
           jq empty manifests/tools.json
           jq empty manifests/drivers.json
           jq empty manifests/image-payload.json
@@ -85,4 +86,12 @@ jobs:
             if ($step.risk -ne "read_only" -or $step.requires_confirmation -ne $false) {
               throw "Offline preflight emitted a mutating operation"
             }
+          }
+          $sessionPath = Join-Path $env:RUNNER_TEMP "diagnosis-session.json"
+          if (-not (Test-Path $sessionPath)) {
+            throw "Agent did not create a diagnostic session"
+          }
+          $session = Get-Content $sessionPath -Raw | ConvertFrom-Json
+          if ($session.schema_version -ne "0.1.0" -or $session.report_id -ne $report.report_id) {
+            throw "Unexpected diagnostic session contract"
           }
