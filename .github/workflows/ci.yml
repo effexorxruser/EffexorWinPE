@@ -30,3 +30,33 @@ jobs:
           jq empty manifests/tools.json
           jq empty manifests/drivers.json
           jq empty payload/ANP/config/client.example.json
+
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Test Windows implementation
+        run: go test ./...
+      - name: Build collector
+        run: go build -trimpath -o "$env:RUNNER_TEMP/anp-collector.exe" ./cmd/anp-collector
+      - name: Collect and validate report
+        shell: pwsh
+        run: |
+          $reportPath = Join-Path $env:RUNNER_TEMP "diagnostic-report.json"
+          & "$env:RUNNER_TEMP/anp-collector.exe" --output $reportPath
+          if ($LASTEXITCODE -ne 0) {
+            throw "Collector failed with exit code $LASTEXITCODE"
+          }
+          $report = Get-Content $reportPath -Raw | ConvertFrom-Json
+          if ($report.schema_version -ne "1.1.0") {
+            throw "Unexpected schema version: $($report.schema_version)"
+          }
+          foreach ($section in @("hardware", "storage", "boot", "windows_installations", "checks", "privacy")) {
+            if ($null -eq $report.$section) {
+              throw "Missing report section: $section"
+            }
+          }

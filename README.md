@@ -11,11 +11,12 @@ Bootstrap/MVP foundation:
 - reproducible WinPE build skeleton;
 - dependency-free Go diagnostic collector;
 - versioned JSON diagnostic contract;
+- read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
 - payload and driver manifests;
 - safety and secret-handling rules;
 - initial CI workflow.
 
-No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report. A graphical launcher and backend connection come next.
+No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. A graphical launcher and backend connection come next.
 
 ## Repository layout
 

@@ -19,6 +19,7 @@ func Collect(version string) (diagnostics.Report, error) {
 
 	hostname, _ := os.Hostname()
 	installations := findWindowsInstallations()
+	hardware, storage, boot, platformChecks := collectPlatform()
 
 	checks := []diagnostics.Check{
 		{
@@ -27,6 +28,7 @@ func Collect(version string) (diagnostics.Report, error) {
 			Summary: fmt.Sprintf("Collector is running on %s/%s", runtime.GOOS, runtime.GOARCH),
 		},
 	}
+	checks = append(checks, platformChecks...)
 	if len(installations) == 0 {
 		checks = append(checks, diagnostics.Check{
 			ID:      "windows.installations",
@@ -54,11 +56,15 @@ func Collect(version string) (diagnostics.Report, error) {
 			RuntimeArch: runtime.GOARCH,
 			Hostname:    hostname,
 		},
+		Hardware:      hardware,
+		Storage:       storage,
+		Boot:          boot,
 		Installations: installations,
 		Checks:        checks,
 		Privacy: diagnostics.Privacy{
 			ContainsPersonalData: hostname != "",
 			ExcludedByDefault: []string{
+				"hostname",
 				"usernames",
 				"file_contents",
 				"browser_data",
