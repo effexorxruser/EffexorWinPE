@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "tools": [
+    {
+      "id": "anp-collector",
+      "kind": "first-party",
+      "source": "cmd/anp-collector",
+      "destination": "ANP/bin/anp-collector.exe",
+      "redistribution": "allowed",
+      "checksum": "generated-at-build-time"
+    }
+  ]
+}

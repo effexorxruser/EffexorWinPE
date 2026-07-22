@@ -1,0 +1,6 @@
+{
+  "gateway_url": "https://api.example.invalid/rescue/v1",
+  "device_token_file": "Y:\\ANP\\secrets\\device-token.txt",
+  "upload_enabled": false,
+  "require_preview_before_upload": true
+}
