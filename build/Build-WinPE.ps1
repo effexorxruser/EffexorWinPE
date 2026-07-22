@@ -88,7 +88,10 @@ try {
     }
 
     $PayloadTarget = Join-Path $MountDirectory "EffexorWinPE"
-    Copy-Item -Recurse -Force (Join-Path $RepoRoot "payload/EffexorWinPE") $PayloadTarget
+    & (Join-Path $PSScriptRoot "Copy-ImagePayload.ps1") `
+        -SourceRoot $RepoRoot `
+        -DestinationRoot $PayloadTarget `
+        -ManifestPath (Join-Path $RepoRoot "manifests/image-payload.json")
 
     if ($IncludeLocalDrivers) {
         $Drivers = Join-Path $RepoRoot "drivers/local"

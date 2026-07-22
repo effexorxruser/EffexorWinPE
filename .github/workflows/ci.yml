@@ -32,6 +32,7 @@ jobs:
           jq empty contracts/diagnosis.schema.json
           jq empty manifests/tools.json
           jq empty manifests/drivers.json
+          jq empty manifests/image-payload.json
           jq empty payload/EffexorWinPE/config/client.example.json
 
   windows-smoke:
@@ -43,7 +44,8 @@ jobs:
           go-version: "1.24.x"
           cache: false
       - name: Test Windows implementation
-        run: go test ./...
+        shell: pwsh
+        run: ./build/Test-Repository.ps1
       - name: Build WinPE executables
         run: |
           go build -trimpath -o "$env:RUNNER_TEMP/effexorwinpe-collector.exe" ./cmd/effexorwinpe-collector

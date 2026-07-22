@@ -33,6 +33,10 @@ manifests/              Auditable image contents
 payload/EffexorWinPE/         Files copied into X:\\EffexorWinPE in WinPE
 ```
 
+The image payload is copied from the closed allowlist in `manifests/image-payload.json`.
+Files merely present under `payload/EffexorWinPE` are never included automatically, so
+local reports, credentials, and other ignored build-host data cannot leak into an ISO.
+
 ## Build prerequisites
 
 On a Windows 11 x64 build machine install:

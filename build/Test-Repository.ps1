@@ -9,6 +9,9 @@ try {
     Get-Content "contracts/diagnosis.schema.json" -Raw | ConvertFrom-Json | Out-Null
     Get-Content "manifests/tools.json" -Raw | ConvertFrom-Json | Out-Null
     Get-Content "manifests/drivers.json" -Raw | ConvertFrom-Json | Out-Null
+    Get-Content "manifests/image-payload.json" -Raw | ConvertFrom-Json | Out-Null
+
+    & (Join-Path $PSScriptRoot "Test-PayloadAllowlist.ps1")
 
     if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
         throw "Go was not found. Install Go 1.24 or newer."
