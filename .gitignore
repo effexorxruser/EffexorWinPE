@@ -13,3 +13,5 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+/deploy/gateway/secrets/*
+!/deploy/gateway/secrets/README.md

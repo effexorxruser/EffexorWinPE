@@ -14,20 +14,23 @@ Bootstrap/MVP foundation:
 - read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
 - offline evidence-backed diagnostic preflight with confidence, follow-up questions, limitations, and typed read-only next steps;
 - resumable diagnostic sessions with technician symptoms, answers, and a compact audit timeline;
-- an opt-in HTTPS client for the future model-backed gateway, with a removable device token and a separate upload approval flag;
+- an opt-in HTTPS client for the model-backed gateway, with a removable device token and a separate upload approval flag;
+- an authenticated asynchronous gateway with strict model output, official-domain web retrieval, source capture, and a read-only operation boundary;
 - payload and driver manifests;
 - safety and secret-handling rules;
 - initial CI workflow.
 
-No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report, offline preflight assessment, and resumable diagnostic-session file. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. A graphical launcher and gateway backend come next.
+No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report, offline preflight assessment, and resumable diagnostic-session file. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. The first real ADK/WinPE boot and a graphical launcher still need validation.
 
 ## Repository layout
 
 ```text
 build/                 Windows build and validation scripts
 cmd/effexorwinpe-collector/  WinPE diagnostic collector executable
-cmd/effexorwinpe-agent/      Offline preflight and future gateway client
+cmd/effexorwinpe-agent/      Offline preflight, session, and gateway client
+cmd/effexorwinpe-gateway/    Server-side authenticated model gateway
 contracts/             Versioned API and report schemas
+deploy/gateway/         Container and deployment example; no secrets
 docs/                  Architecture, roadmap, and decisions
 drivers/               Documentation and local driver staging area
 internal/              Collector and report implementation
@@ -53,7 +56,7 @@ X:\EffexorWinPE\bin\effexorwinpe-agent.exe `
 
 For scripting, repeat `--symptom` and use `--answer question-id=value`. Russian `да`, `нет`, and `не знаю` are normalized for yes/no questions.
 
-Online submission is disabled unless the technician supplies an HTTPS gateway URL, an external token file, and `--approve-upload` together. This is an explicit upload of the report plus session context; symptom free text can contain personal data and must be reviewed first. The backend endpoint is only a contract at this stage, so offline diagnosis remains the working mode.
+Online submission is disabled unless the technician supplies an HTTPS gateway URL, an external token file, and `--approve-upload` together. This is an explicit upload of the report plus session context; symptom free text can contain personal data and must be reviewed first. The gateway strips the hostname again, sends model requests with storage disabled, constrains web retrieval to reviewed official domains, and rejects invented evidence paths, source URLs, or operations. See [`docs/gateway.md`](docs/gateway.md).
 
 ## Build prerequisites
 
@@ -84,7 +87,7 @@ EffexorWinPE separates inspection from repair:
 1. Collectors read system state and produce a report.
 2. The technician reviews exactly what may leave the device.
 3. The client sends approved data to the EffexorWinPE agent gateway using a revocable device token.
-4. The backend proposes bounded actions.
+4. The gateway returns sourced findings and bounded read-only diagnostic actions.
 5. Any disk or OS mutation requires a local confirmation and is logged.
 
 The OpenAI API key belongs only on the backend. It must never be placed in the ISO, payload, configuration committed to Git, or a client-side environment file.

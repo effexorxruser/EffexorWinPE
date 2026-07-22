@@ -10,7 +10,7 @@ import (
 	"github.com/effexorxruser/EffexorWinPE/internal/diagnosis"
 )
 
-const SchemaVersion = "0.1.0"
+const SchemaVersion = "0.2.0"
 
 const (
 	EventSessionStarted           = "session_started"
@@ -69,9 +69,9 @@ func New(reportID string, now time.Time) (Session, error) {
 		ReportID:      reportID,
 		CreatedAt:     now,
 		UpdatedAt:     now,
-		Symptoms:     []Symptom{},
-		Answers:      []Answer{},
-		Events:       []Event{{At: now, Kind: EventSessionStarted}},
+		Symptoms:      []Symptom{},
+		Answers:       []Answer{},
+		Events:        []Event{{At: now, Kind: EventSessionStarted}},
 	}, nil
 }
 

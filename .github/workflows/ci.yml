@@ -16,8 +16,17 @@ jobs:
         with:
           go-version: "1.24.x"
           cache: false
-      - name: Test
-        run: go test ./...
+      - name: Check Go formatting
+        run: |
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [ -n "$unformatted" ]; then
+            printf 'Unformatted Go files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test with race detector
+        run: go test -race ./...
       - name: Cross-compile EffexorWinPE executables
         env:
           GOOS: windows
@@ -26,6 +35,10 @@ jobs:
         run: |
           go build -trimpath -o /tmp/effexorwinpe-collector.exe ./cmd/effexorwinpe-collector
           go build -trimpath -o /tmp/effexorwinpe-agent.exe ./cmd/effexorwinpe-agent
+      - name: Build Linux gateway
+        run: go build -trimpath -o /tmp/effexorwinpe-gateway ./cmd/effexorwinpe-gateway
+      - name: Build gateway container
+        run: docker build -f deploy/gateway/Dockerfile -t effexorwinpe-gateway:test .
       - name: Validate JSON files
         run: |
           jq empty contracts/diagnostic-report.schema.json
@@ -74,10 +87,10 @@ jobs:
             throw "Agent preflight failed with exit code $LASTEXITCODE"
           }
           $diagnosis = Get-Content $diagnosisPath -Raw | ConvertFrom-Json
-          if ($diagnosis.schema_version -ne "0.1.0" -or $diagnosis.mode -ne "offline_preflight") {
+          if ($diagnosis.schema_version -ne "0.2.0" -or $diagnosis.mode -ne "offline_preflight") {
             throw "Unexpected diagnosis contract or mode"
           }
-          foreach ($section in @("findings", "questions", "next_steps", "limitations")) {
+          foreach ($section in @("findings", "questions", "next_steps", "limitations", "sources")) {
             if ($null -eq $diagnosis.$section) {
               throw "Missing diagnosis section: $section"
             }
@@ -92,6 +105,6 @@ jobs:
             throw "Agent did not create a diagnostic session"
           }
           $session = Get-Content $sessionPath -Raw | ConvertFrom-Json
-          if ($session.schema_version -ne "0.1.0" -or $session.report_id -ne $report.report_id) {
+          if ($session.schema_version -ne "0.2.0" -or $session.report_id -ne $report.report_id) {
             throw "Unexpected diagnostic session contract"
           }

@@ -6,7 +6,7 @@ import "github.com/effexorxruser/EffexorWinPE/internal/diagnostics"
 
 func collectPlatform() (diagnostics.Hardware, diagnostics.Storage, diagnostics.Boot, []diagnostics.Check) {
 	hardware := diagnostics.Hardware{
-		FirmwareMode:   "unknown",
+		FirmwareMode:    "unknown",
 		NetworkAdapters: []diagnostics.NetworkAdapter{},
 	}
 	storage := diagnostics.Storage{

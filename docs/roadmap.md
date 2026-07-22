@@ -28,13 +28,15 @@
 - [ ] Show offline/online state and report destination.
 - [ ] Keep shell access available for advanced work.
 
-## M3 — shared agent integration
+## M3 — agent integration
 
-- [ ] Implement the dedicated EffexorWinPE gateway endpoint.
+- [x] Implement the dedicated EffexorWinPE gateway endpoint.
 - [x] Implement the opt-in HTTPS gateway client and asynchronous diagnosis contract.
 - [ ] Implement device enrollment and revocation.
-- [ ] Add report redaction and size limits.
-- [ ] Return evidence, uncertainty, and proposed typed operations.
+- [x] Add server-side hostname redaction and request/response size limits.
+- [x] Return evidence, uncertainty, retrieved sources, and proposed typed read-only operations.
+- [ ] Run a live provider test through public TLS from the first WinPE image.
+- [ ] Add official-source retrieval evals and small-OEM domain review.
 - [ ] Keep all mutations behind local confirmation.
 
 ## M4 — repair operations and tool catalog

@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: EffexorWinPE Agent Gateway
-  version: 0.3.0
-  description: Narrow client boundary between EffexorWinPE rescue media and its model-backed agent service.
+  version: 0.4.0
+  description: Authenticated asynchronous boundary between EffexorWinPE clients and the evidence-gated model service.
 servers:
   - url: https://api.example.invalid/rescue/v1
 paths:
@@ -38,12 +38,19 @@ paths:
                 properties:
                   diagnosis_id:
                     type: string
+                    pattern: ^diagnosis-[a-f0-9]{32}$
                   status:
                     const: queued
+        "400":
+          description: Request does not match the supported report, session, or approval contract
         "401":
           description: Device credential is missing, expired, or revoked
         "413":
           description: Diagnostic report exceeds the allowed size
+        "415":
+          description: Request is not JSON
+        "429":
+          description: In-memory gateway capacity is temporarily exhausted
   /diagnoses/{diagnosis_id}:
     get:
       summary: Read the current state or completed evidence-backed diagnosis
@@ -68,6 +75,19 @@ paths:
                     properties:
                       diagnosis_id: { type: string }
                       status: { enum: [queued, running] }
+                  - type: object
+                    additionalProperties: false
+                    required: [diagnosis_id, status, error]
+                    properties:
+                      diagnosis_id: { type: string }
+                      status: { const: failed }
+                      error:
+                        type: object
+                        additionalProperties: false
+                        required: [code, message]
+                        properties:
+                          code: { const: analysis_failed }
+                          message: { type: string }
                   - allOf:
                       - $ref: ./diagnosis.schema.json
                       - type: object

@@ -24,8 +24,8 @@ const (
 )
 
 type DiagnosisRequest struct {
-	DiagnosticReport  diagnostics.Report `json:"diagnostic_report"`
-	Session           session.Session    `json:"session"`
+	DiagnosticReport   diagnostics.Report `json:"diagnostic_report"`
+	Session            session.Session    `json:"session"`
 	TechnicianApproved bool               `json:"technician_approved"`
 }
 
@@ -112,6 +112,9 @@ func (c Client) Diagnose(ctx context.Context, baseURL, token string, request Dia
 			if assessment.Mode != diagnosis.ModeOnlineAgent {
 				return diagnosis.Assessment{}, fmt.Errorf("gateway result has unexpected mode %q", assessment.Mode)
 			}
+			if err := ValidateOnlineAssessment(assessment, request); err != nil {
+				return diagnosis.Assessment{}, fmt.Errorf("gateway returned an invalid assessment: %w", err)
+			}
 			return assessment, nil
 		}
 	}
@@ -142,6 +145,9 @@ func (c Client) poll(ctx context.Context, endpoint, token string) (diagnosis.Ass
 	if state.Status == "queued" || state.Status == "running" {
 		return diagnosis.Assessment{}, false, nil
 	}
+	if state.Status == "failed" {
+		return diagnosis.Assessment{}, false, fmt.Errorf("gateway analysis failed")
+	}
 	var assessment diagnosis.Assessment
 	if err := json.Unmarshal(data, &assessment); err != nil {
 		return diagnosis.Assessment{}, false, fmt.Errorf("decode gateway assessment: %w", err)
@@ -155,7 +161,7 @@ func (c Client) poll(ctx context.Context, endpoint, token string) (diagnosis.Ass
 func (c Client) do(ctx context.Context, method, endpoint, token string, payload []byte) (*http.Response, error) {
 	client := c.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{CheckRedirect: rejectRedirect}
 	}
 	var body io.Reader
 	if payload != nil {
@@ -176,6 +182,10 @@ func (c Client) do(ctx context.Context, method, endpoint, token string, payload 
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
 	return response, nil
+}
+
+func rejectRedirect(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func parseEndpoint(raw string) (*url.URL, error) {
@@ -208,17 +218,16 @@ func responseError(response *http.Response) error {
 }
 
 func safeDiagnosisID(value string) bool {
-	if len(value) == 0 || len(value) > 128 {
+	const prefix = "diagnosis-"
+	const digestLength = 32
+	if len(value) != len(prefix)+digestLength || !strings.HasPrefix(value, prefix) {
 		return false
 	}
-	for _, character := range value {
-		if character >= 'a' && character <= 'z' ||
-			character >= 'A' && character <= 'Z' ||
-			character >= '0' && character <= '9' ||
-			character == '-' || character == '_' || character == '.' {
+	for _, character := range value[len(prefix):] {
+		if character >= '0' && character <= '9' || character >= 'a' && character <= 'f' {
 			continue
 		}
 		return false
 	}
-	return value != "." && value != ".."
+	return true
 }

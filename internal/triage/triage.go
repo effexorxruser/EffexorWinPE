@@ -27,6 +27,7 @@ func Analyze(report diagnostics.Report, now time.Time) (diagnosis.Assessment, er
 		Findings:      []diagnosis.Finding{},
 		Questions:     []diagnosis.Question{},
 		NextSteps:     []diagnosis.NextStep{},
+		Sources:       []diagnosis.Source{},
 		Limitations: []string{
 			"Offline preflight uses conservative deterministic rules; it is not the model-backed EffexorWinPE agent diagnosis.",
 			"Missing providers or counters reduce confidence and never imply that hardware is healthy.",
@@ -57,6 +58,11 @@ func Analyze(report diagnostics.Report, now time.Time) (diagnosis.Assessment, er
 	}
 
 	assessment.Summary = summarize(assessment.Findings)
+	for index := range assessment.Findings {
+		if assessment.Findings[index].SourceRefs == nil {
+			assessment.Findings[index].SourceRefs = []string{}
+		}
+	}
 	return assessment, nil
 }
 
