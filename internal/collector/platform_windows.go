@@ -42,16 +42,31 @@ func collectPlatform() (diagnostics.Hardware, diagnostics.Storage, diagnostics.B
 		inventoryStatus = "warning"
 		inventorySuffix = fmt.Sprintf("; %d source(s) unavailable", len(payload.Errors))
 	}
+	bitLockerCount := 0
+	if payload.Storage.BitLockerVolumes != nil {
+		bitLockerCount = len(payload.Storage.BitLockerVolumes)
+	}
 	checks := []diagnostics.Check{{
 		ID:      "platform.inventory",
 		Status:  inventoryStatus,
-		Summary: fmt.Sprintf("Collected %d disk(s), %d drive-health record(s), %d partition(s), and %d network adapter(s)%s", len(payload.Storage.Disks), len(payload.Storage.DriveHealth), len(payload.Storage.Partitions), len(payload.Hardware.NetworkAdapters), inventorySuffix),
+		Summary: fmt.Sprintf("Collected %d disk(s), %d drive-health record(s), %d partition(s), %d network adapter(s), and BitLocker status %s (%d volume(s))%s", len(payload.Storage.Disks), len(payload.Storage.DriveHealth), len(payload.Storage.Partitions), len(payload.Hardware.NetworkAdapters), payload.Storage.BitLockerInventory.Status, bitLockerCount, inventorySuffix),
 	}}
 	for index, sourceError := range payload.Errors {
 		checks = append(checks, diagnostics.Check{
 			ID:      fmt.Sprintf("platform.inventory.source.%d", index+1),
 			Status:  "unknown",
 			Summary: sourceError,
+		})
+	}
+	if payload.Storage.BitLockerInventory.Status == diagnostics.BitLockerStatusUnavailable {
+		summary := "BitLocker inventory is unavailable"
+		if payload.Storage.BitLockerInventory.Error != "" {
+			summary = "BitLocker inventory is unavailable: " + payload.Storage.BitLockerInventory.Error
+		}
+		checks = append(checks, diagnostics.Check{
+			ID:      "storage.bitlocker_inventory",
+			Status:  "unknown",
+			Summary: summary,
 		})
 	}
 	if len(boot.BCDStores) == 0 {
@@ -96,7 +111,16 @@ func runPowerShellInventory() (inventoryPayload, error) {
 
 func emptyPlatformReport() (diagnostics.Hardware, diagnostics.Storage, diagnostics.Boot) {
 	hardware := diagnostics.Hardware{FirmwareMode: "unknown", NetworkAdapters: []diagnostics.NetworkAdapter{}}
-	storage := diagnostics.Storage{Disks: []diagnostics.Disk{}, DriveHealth: []diagnostics.DriveHealth{}, Partitions: []diagnostics.Partition{}, BitLockerVolumes: []diagnostics.BitLockerVolume{}}
+	storage := diagnostics.Storage{
+		Disks:            []diagnostics.Disk{},
+		DriveHealth:      []diagnostics.DriveHealth{},
+		Partitions:       []diagnostics.Partition{},
+		BitLockerVolumes: nil,
+		BitLockerInventory: diagnostics.BitLockerInventory{
+			Status: diagnostics.BitLockerStatusUnavailable,
+			Error:  "platform inventory failed before BitLocker collection",
+		},
+	}
 	boot := diagnostics.Boot{FirmwareMode: "unknown", BCDStores: findBCDStores()}
 	return hardware, storage, boot
 }
@@ -108,6 +132,9 @@ func normalizeInventory(payload *inventoryPayload) {
 	if payload.Hardware.NetworkAdapters == nil {
 		payload.Hardware.NetworkAdapters = []diagnostics.NetworkAdapter{}
 	}
+	for index := range payload.Hardware.NetworkAdapters {
+		payload.Hardware.NetworkAdapters[index] = diagnostics.NormalizeNetworkAdapter(payload.Hardware.NetworkAdapters[index])
+	}
 	if payload.Storage.Disks == nil {
 		payload.Storage.Disks = []diagnostics.Disk{}
 	}
@@ -117,9 +144,7 @@ func normalizeInventory(payload *inventoryPayload) {
 	if payload.Storage.Partitions == nil {
 		payload.Storage.Partitions = []diagnostics.Partition{}
 	}
-	if payload.Storage.BitLockerVolumes == nil {
-		payload.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{}
-	}
+	normalizeBitLockerInventory(&payload.Storage)
 	if payload.Errors == nil {
 		payload.Errors = []string{}
 	}
@@ -128,6 +153,30 @@ func normalizeInventory(payload *inventoryPayload) {
 const inventoryPowerShell = `
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Get-NullableUInt64 {
+  param($Value)
+  if ($null -eq $Value) { return $null }
+  try { return [uint64]$Value } catch { return $null }
+}
+
+function Get-NamedStatus {
+  param(
+    [object[]]$Names,
+    $Index
+  )
+  if ($null -eq $Index) { return $null }
+  try {
+    $numeric = [int]$Index
+    if ($numeric -ge 0 -and $numeric -lt $Names.Count) {
+      return [string]$Names[$numeric]
+    }
+    return [string]$Index
+  } catch {
+    return [string]$Index
+  }
+}
+
 $errors = @()
 $firmwareMode = 'unknown'
 $system = [ordered]@{}
@@ -137,7 +186,8 @@ $networkAdapters = @()
 $disks = @()
 $driveHealth = @()
 $partitions = @()
-$bitLockerVolumes = @()
+$bitLockerVolumes = $null
+$bitLockerInventory = [ordered]@{ status = 'unavailable'; error = 'BitLocker inventory was not attempted' }
 
 try {
   $firmwareValue = (Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control' -Name PEFirmwareType -ErrorAction Stop).PEFirmwareType
@@ -162,7 +212,16 @@ try {
 
 try {
   $networkAdapters = @(Get-CimInstance Win32_NetworkAdapter | Where-Object { $_.PhysicalAdapter -eq $true } | ForEach-Object {
-    [ordered]@{ name = [string]$_.Name; description = [string]$_.Description; status = [string]$_.NetConnectionStatus }
+    $code = $null
+    if ($null -ne $_.NetConnectionStatus) {
+      try { $code = [int]$_.NetConnectionStatus } catch { $code = $null }
+    }
+    [ordered]@{
+      name = [string]$_.Name
+      description = [string]$_.Description
+      status = if ($null -ne $code) { [string]$code } else { '' }
+      status_code = $code
+    }
   })
 } catch { $errors += 'Network adapter inventory is unavailable: ' + $_.Exception.Message }
 
@@ -181,15 +240,29 @@ try {
   $driveHealth = @(Get-PhysicalDisk | ForEach-Object {
     $physicalDisk = $_
     $counter = $null
-    try { $counter = $physicalDisk | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
+    try { $counter = $physicalDisk | Get-StorageReliabilityCounter -ErrorAction Stop } catch { $counter = $null }
+    $temperature = $null
+    $wear = $null
+    $powerOnHours = $null
+    $readErrors = $null
+    $writeErrors = $null
+    if ($null -ne $counter) {
+      $temperature = Get-NullableUInt64 $counter.Temperature
+      $wear = Get-NullableUInt64 $counter.Wear
+      $powerOnHours = Get-NullableUInt64 $counter.PowerOnHours
+      $readErrors = Get-NullableUInt64 $counter.ReadErrorsTotal
+      $writeErrors = Get-NullableUInt64 $counter.WriteErrorsTotal
+    }
     [ordered]@{
-      device_id = [string]$physicalDisk.DeviceId; friendly_name = [string]$physicalDisk.FriendlyName
-      media_type = [string]$physicalDisk.MediaType; health_status = [string]$physicalDisk.HealthStatus
-      temperature_celsius = if ($null -ne $counter.Temperature) { [uint64]$counter.Temperature } else { $null }
-      wear_percent = if ($null -ne $counter.Wear) { [uint64]$counter.Wear } else { $null }
-      power_on_hours = if ($null -ne $counter.PowerOnHours) { [uint64]$counter.PowerOnHours } else { $null }
-      read_errors_total = if ($null -ne $counter.ReadErrorsTotal) { [uint64]$counter.ReadErrorsTotal } else { $null }
-      write_errors_total = if ($null -ne $counter.WriteErrorsTotal) { [uint64]$counter.WriteErrorsTotal } else { $null }
+      device_id = [string]$physicalDisk.DeviceId
+      friendly_name = [string]$physicalDisk.FriendlyName
+      media_type = [string]$physicalDisk.MediaType
+      health_status = [string]$physicalDisk.HealthStatus
+      temperature_celsius = $temperature
+      wear_percent = $wear
+      power_on_hours = $powerOnHours
+      read_errors_total = $readErrors
+      write_errors_total = $writeErrors
     }
   })
 } catch { $errors += 'Storage reliability counters are unavailable: ' + $_.Exception.Message }
@@ -212,35 +285,85 @@ try {
         encryption_method = [string]$_.EncryptionMethod
       }
     })
+    $bitLockerInventory = [ordered]@{ status = 'ok' }
   } else {
     $conversionNames = @('FullyDecrypted', 'FullyEncrypted', 'EncryptionInProgress', 'DecryptionInProgress', 'EncryptionPaused', 'DecryptionPaused')
     $protectionNames = @('Off', 'On', 'Unknown')
     $lockNames = @('Unlocked', 'Locked')
     $encryptionNames = @('None', 'AES_128_WITH_DIFFUSER', 'AES_256_WITH_DIFFUSER', 'AES_128', 'AES_256', 'HardwareEncryption', 'XTS_AES_128', 'XTS_AES_256')
-    $encryptableVolumes = @(Get-CimInstance -Namespace 'root/CIMV2/Security/MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume)
-    $bitLockerVolumes = @($encryptableVolumes | ForEach-Object {
-      $conversion = Invoke-CimMethod -InputObject $_ -MethodName GetConversionStatus
-      $protection = Invoke-CimMethod -InputObject $_ -MethodName GetProtectionStatus
-      $lock = Invoke-CimMethod -InputObject $_ -MethodName GetLockStatus
-      $mountPoint = [string]$_.DriveLetter
-      if (-not $mountPoint) { $mountPoint = [string]$_.PersistentVolumeID }
-      $volumeStatus = if ($conversion.ConversionStatus -lt $conversionNames.Count) { $conversionNames[$conversion.ConversionStatus] } else { [string]$conversion.ConversionStatus }
-      $protectionStatus = if ($protection.ProtectionStatus -lt $protectionNames.Count) { $protectionNames[$protection.ProtectionStatus] } else { [string]$protection.ProtectionStatus }
-      $lockStatus = if ($lock.LockStatus -lt $lockNames.Count) { $lockNames[$lock.LockStatus] } else { [string]$lock.LockStatus }
-      $encryptionMethod = if ($conversion.EncryptionMethod -lt $encryptionNames.Count) { $encryptionNames[$conversion.EncryptionMethod] } else { [string]$conversion.EncryptionMethod }
-      [ordered]@{
-        mount_point = $mountPoint; volume_status = $volumeStatus; protection_status = $protectionStatus
-        lock_status = $lockStatus; encryption_method = $encryptionMethod
+    $encryptableVolumes = @()
+    try {
+      $encryptableVolumes = @(Get-CimInstance -Namespace 'root/CIMV2/Security/MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -ErrorAction Stop)
+    } catch {
+      throw
+    }
+    $partial = $false
+    $collected = New-Object System.Collections.Generic.List[object]
+    foreach ($volume in $encryptableVolumes) {
+      try {
+        $conversion = $null
+        $protection = $null
+        $lock = $null
+        try { $conversion = Invoke-CimMethod -InputObject $volume -MethodName GetConversionStatus -ErrorAction Stop } catch { $partial = $true }
+        try { $protection = Invoke-CimMethod -InputObject $volume -MethodName GetProtectionStatus -ErrorAction Stop } catch { $partial = $true }
+        try { $lock = Invoke-CimMethod -InputObject $volume -MethodName GetLockStatus -ErrorAction Stop } catch { $partial = $true }
+
+        $mountPoint = $null
+        if ($null -ne $volume.DriveLetter -and [string]$volume.DriveLetter -ne '') {
+          $mountPoint = [string]$volume.DriveLetter
+        } elseif ($null -ne $volume.PersistentVolumeID -and [string]$volume.PersistentVolumeID -ne '') {
+          $mountPoint = [string]$volume.PersistentVolumeID
+        } else {
+          $mountPoint = 'unknown'
+          $partial = $true
+        }
+
+        $conversionStatus = $null
+        $encryptionMethodValue = $null
+        if ($null -ne $conversion) {
+          if ($null -ne $conversion.ConversionStatus) { $conversionStatus = $conversion.ConversionStatus }
+          if ($null -ne $conversion.EncryptionMethod) { $encryptionMethodValue = $conversion.EncryptionMethod }
+        }
+        $protectionStatus = $null
+        if ($null -ne $protection -and $null -ne $protection.ProtectionStatus) { $protectionStatus = $protection.ProtectionStatus }
+        $lockStatus = $null
+        if ($null -ne $lock -and $null -ne $lock.LockStatus) { $lockStatus = $lock.LockStatus }
+
+        $collected.Add([ordered]@{
+          mount_point = $mountPoint
+          volume_status = Get-NamedStatus -Names $conversionNames -Index $conversionStatus
+          protection_status = Get-NamedStatus -Names $protectionNames -Index $protectionStatus
+          lock_status = Get-NamedStatus -Names $lockNames -Index $lockStatus
+          encryption_method = Get-NamedStatus -Names $encryptionNames -Index $encryptionMethodValue
+        }) | Out-Null
+      } catch {
+        $partial = $true
       }
-    })
+    }
+    $bitLockerVolumes = @($collected)
+    if ($partial) {
+      $bitLockerInventory = [ordered]@{ status = 'partial'; error = 'One or more BitLocker volume fields were incomplete' }
+    } else {
+      $bitLockerInventory = [ordered]@{ status = 'ok' }
+    }
   }
-} catch { $errors += 'BitLocker inventory is unavailable: ' + $_.Exception.Message }
+} catch {
+  $errors += 'BitLocker inventory is unavailable: ' + $_.Exception.Message
+  $bitLockerVolumes = $null
+  $bitLockerInventory = [ordered]@{ status = 'unavailable'; error = $_.Exception.Message }
+}
 
 [ordered]@{
   hardware = [ordered]@{
     firmware_mode = $firmwareMode; system = $system; processor = $processor; memory = $memory; network_adapters = $networkAdapters
   }
-  storage = [ordered]@{ disks = $disks; drive_health = $driveHealth; partitions = $partitions; bitlocker_volumes = $bitLockerVolumes }
+  storage = [ordered]@{
+    disks = $disks
+    drive_health = $driveHealth
+    partitions = $partitions
+    bitlocker_volumes = $bitLockerVolumes
+    bitlocker_inventory = $bitLockerInventory
+  }
   errors = $errors
 } | ConvertTo-Json -Depth 7 -Compress
 `

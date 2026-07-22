@@ -1,0 +1,227 @@
+{
+  "schema_version": "1.3.0",
+  "report_id": "fixture000000000001",
+  "collected_at": "2026-07-22T12:00:00Z",
+  "collector": {
+    "name": "effexorwinpe-collector",
+    "version": "test-fixture"
+  },
+  "environment": {
+    "runtime_os": "windows",
+    "runtime_arch": "amd64"
+  },
+  "hardware": {
+    "firmware_mode": "uefi",
+    "system": {
+      "manufacturer": "ASUSTeK COMPUTER INC.",
+      "model": "Example-Notebook"
+    },
+    "processor": {
+      "name": "Example CPU",
+      "cores": 4,
+      "logical_processors": 8
+    },
+    "memory": {
+      "total_physical_bytes": 8589934592
+    },
+    "network_adapters": [
+      {
+        "name": "Realtek PCIe GbE Family Controller",
+        "description": "Realtek PCIe GbE Family Controller",
+        "status": "media_disconnected",
+        "status_code": 7
+      }
+    ]
+  },
+  "storage": {
+    "disks": [
+      {
+        "number": 0,
+        "friendly_name": "Example SATA HDD",
+        "bus_type": "SATA",
+        "size_bytes": 1000204886016,
+        "partition_style": "GPT",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": false,
+        "is_system": false
+      },
+      {
+        "number": 1,
+        "friendly_name": "Example NVMe SSD",
+        "bus_type": "NVMe",
+        "size_bytes": 512110190592,
+        "partition_style": "GPT",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": true,
+        "is_system": true
+      },
+      {
+        "number": 2,
+        "friendly_name": "Example USB Flash",
+        "bus_type": "USB",
+        "size_bytes": 31004246016,
+        "partition_style": "MBR",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": false,
+        "is_system": false
+      }
+    ],
+    "drive_health": [
+      {
+        "device_id": "0",
+        "friendly_name": "Example SATA HDD",
+        "media_type": "HDD",
+        "health_status": "Healthy",
+        "temperature_celsius": 34,
+        "wear_percent": null,
+        "power_on_hours": 12000,
+        "read_errors_total": 0,
+        "write_errors_total": 0
+      },
+      {
+        "device_id": "1",
+        "friendly_name": "Example NVMe SSD",
+        "media_type": "SSD",
+        "health_status": "Healthy",
+        "temperature_celsius": 41,
+        "wear_percent": 3,
+        "power_on_hours": 800,
+        "read_errors_total": 0,
+        "write_errors_total": 0
+      },
+      {
+        "device_id": "2",
+        "friendly_name": "Example USB Flash",
+        "media_type": "Unspecified",
+        "health_status": "Healthy",
+        "temperature_celsius": null,
+        "wear_percent": null,
+        "power_on_hours": null,
+        "read_errors_total": null,
+        "write_errors_total": null
+      }
+    ],
+    "partitions": [
+      {
+        "disk_number": 0,
+        "partition_number": 1,
+        "drive_letter": "",
+        "size_bytes": 104857600,
+        "type": "System",
+        "gpt_type": "{c12a7328-f81f-11d2-ba4b-00a0c93ec93b}",
+        "is_active": false
+      },
+      {
+        "disk_number": 0,
+        "partition_number": 2,
+        "drive_letter": "",
+        "size_bytes": 500000000000,
+        "type": "Basic",
+        "gpt_type": "{0fc63daf-8483-4772-8e79-3d69d8477de4}",
+        "is_active": false
+      },
+      {
+        "disk_number": 0,
+        "partition_number": 3,
+        "drive_letter": "",
+        "size_bytes": 8589934592,
+        "type": "Basic",
+        "gpt_type": "{0657fd6d-a4ab-43c4-84e5-0933c84b4f4f}",
+        "is_active": false
+      },
+      {
+        "disk_number": 1,
+        "partition_number": 1,
+        "drive_letter": "D",
+        "size_bytes": 510000000000,
+        "type": "Basic",
+        "gpt_type": "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}",
+        "is_active": false
+      },
+      {
+        "disk_number": 2,
+        "partition_number": 1,
+        "drive_letter": "E",
+        "size_bytes": 31000000000,
+        "type": "Basic",
+        "gpt_type": "",
+        "is_active": true
+      }
+    ],
+    "bitlocker_volumes": null,
+    "bitlocker_inventory": {
+      "status": "unavailable",
+      "error": "Index operation failed; the array index evaluated to null."
+    }
+  },
+  "boot": {
+    "firmware_mode": "uefi",
+    "bcd_stores": [
+      {
+        "path": "S:\\EFI\\Microsoft\\Boot\\BCD",
+        "kind": "uefi"
+      }
+    ]
+  },
+  "windows_installations": [
+    {
+      "root": "D:\\",
+      "system_hive": "D:\\Windows\\System32\\config\\SYSTEM",
+      "software_hive": "D:\\Windows\\System32\\config\\SOFTWARE",
+      "version": {
+        "raw_product_name": "Windows 10 Pro",
+        "product_name": "Windows 11 Pro",
+        "display_version": "22H2",
+        "edition_id": "Professional",
+        "installation_type": "Client",
+        "build": "22621.1848"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "collector.runtime",
+      "status": "ok",
+      "summary": "Collector is running on windows/amd64"
+    },
+    {
+      "id": "platform.inventory",
+      "status": "warning",
+      "summary": "Collected 3 disk(s), 3 drive-health record(s), 5 partition(s), 1 network adapter(s), and BitLocker status unavailable (0 volume(s)); 1 source(s) unavailable"
+    },
+    {
+      "id": "platform.inventory.source.1",
+      "status": "unknown",
+      "summary": "BitLocker inventory is unavailable: Index operation failed; the array index evaluated to null."
+    },
+    {
+      "id": "storage.bitlocker_inventory",
+      "status": "unknown",
+      "summary": "BitLocker inventory is unavailable: Index operation failed; the array index evaluated to null."
+    },
+    {
+      "id": "boot.bcd_stores",
+      "status": "ok",
+      "summary": "Found 1 BCD store(s) on mounted volumes"
+    },
+    {
+      "id": "windows.installations",
+      "status": "ok",
+      "summary": "Detected 1 Windows installation(s)"
+    }
+  ],
+  "privacy": {
+    "contains_personal_data": false,
+    "excluded_by_default": [
+      "hostname",
+      "usernames",
+      "file_contents",
+      "browser_data",
+      "wifi_profiles",
+      "network_addresses"
+    ]
+  }
+}

@@ -8,7 +8,7 @@ It is intentionally useful without internet access, but it is not presented as t
 
 1. `effexorwinpe-collector.exe` creates a structured read-only report.
 2. `effexorwinpe-agent.exe` validates the report version.
-3. Conservative rules correlate missing sources, Windows installations, firmware/BCD visibility, storage health, reliability counters, and BitLocker access.
+3. Conservative rules correlate missing sources, Windows installations (excluding the running WinPE/SystemRoot), firmware/BCD visibility, storage health, reliability counters, and BitLocker access. Null reliability counters and an unavailable BitLocker inventory never count as proof that hardware is healthy.
 4. The result contains findings, confidence, evidence references, focused follow-up questions, and typed read-only next steps.
 5. The technician may record observed symptoms and typed answers interactively or with repeatable CLI flags; answered questions are removed from the next pending assessment.
 6. The session keeps a compact timeline and latest assessment without duplicating symptom text into its event log.

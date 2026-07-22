@@ -2,7 +2,7 @@ package diagnostics
 
 import "time"
 
-const SchemaVersion = "1.2.0"
+const SchemaVersion = "1.3.0"
 
 type Report struct {
 	SchemaVersion string         `json:"schema_version"`
@@ -52,17 +52,37 @@ type Memory struct {
 	TotalPhysicalBytes uint64 `json:"total_physical_bytes"`
 }
 
+// NetworkAdapter describes a physical NIC.
+// Status is a stable machine-readable enum derived from Win32_NetworkAdapter.NetConnectionStatus.
+// StatusCode preserves the raw numeric provider value when available, including unknown codes.
 type NetworkAdapter struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	Status      string `json:"status,omitempty"`
+	StatusCode  *int   `json:"status_code,omitempty"`
 }
 
+// BitLocker inventory availability values.
+const (
+	BitLockerStatusOK          = "ok"
+	BitLockerStatusUnavailable = "unavailable"
+	BitLockerStatusPartial     = "partial"
+)
+
 type Storage struct {
-	Disks            []Disk            `json:"disks"`
-	DriveHealth      []DriveHealth     `json:"drive_health"`
-	Partitions       []Partition       `json:"partitions"`
-	BitLockerVolumes []BitLockerVolume `json:"bitlocker_volumes"`
+	Disks              []Disk             `json:"disks"`
+	DriveHealth        []DriveHealth      `json:"drive_health"`
+	Partitions         []Partition        `json:"partitions"`
+	BitLockerVolumes   []BitLockerVolume  `json:"bitlocker_volumes"`
+	BitLockerInventory BitLockerInventory `json:"bitlocker_inventory"`
+}
+
+// BitLockerInventory records whether the BitLocker provider was successfully queried.
+// An empty bitlocker_volumes array is meaningful only when Status is "ok" or "partial".
+// When Status is "unavailable", bitlocker_volumes must be null rather than [].
+type BitLockerInventory struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
 }
 
 type DriveHealth struct {
@@ -70,11 +90,11 @@ type DriveHealth struct {
 	FriendlyName     string  `json:"friendly_name,omitempty"`
 	MediaType        string  `json:"media_type,omitempty"`
 	HealthStatus     string  `json:"health_status,omitempty"`
-	TemperatureC     *uint64 `json:"temperature_celsius,omitempty"`
-	WearPercent      *uint64 `json:"wear_percent,omitempty"`
-	PowerOnHours     *uint64 `json:"power_on_hours,omitempty"`
-	ReadErrorsTotal  *uint64 `json:"read_errors_total,omitempty"`
-	WriteErrorsTotal *uint64 `json:"write_errors_total,omitempty"`
+	TemperatureC     *uint64 `json:"temperature_celsius"`
+	WearPercent      *uint64 `json:"wear_percent"`
+	PowerOnHours     *uint64 `json:"power_on_hours"`
+	ReadErrorsTotal  *uint64 `json:"read_errors_total"`
+	WriteErrorsTotal *uint64 `json:"write_errors_total"`
 }
 
 type Disk struct {
@@ -125,6 +145,7 @@ type Installation struct {
 }
 
 type WindowsVersion struct {
+	RawProductName   string `json:"raw_product_name,omitempty"`
 	ProductName      string `json:"product_name,omitempty"`
 	DisplayVersion   string `json:"display_version,omitempty"`
 	EditionID        string `json:"edition_id,omitempty"`

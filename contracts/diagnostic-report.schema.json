@@ -18,7 +18,7 @@
     "privacy"
   ],
   "properties": {
-    "schema_version": { "const": "1.2.0" },
+    "schema_version": { "const": "1.3.0" },
     "report_id": { "type": "string", "minLength": 16 },
     "collected_at": { "type": "string", "format": "date-time" },
     "collector": {
@@ -69,6 +69,10 @@
     }
   },
   "$defs": {
+    "nullableUInt": {
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
     "hardware": {
       "type": "object",
       "additionalProperties": false,
@@ -110,7 +114,14 @@
             "properties": {
               "name": { "type": "string" },
               "description": { "type": "string" },
-              "status": { "type": "string" }
+              "status": {
+                "type": "string",
+                "description": "Stable machine-readable NetConnectionStatus name such as media_disconnected, or unknown_<code> for unmapped values."
+              },
+              "status_code": {
+                "type": ["integer", "null"],
+                "description": "Raw Win32_NetworkAdapter.NetConnectionStatus value when available."
+              }
             }
           }
         }
@@ -119,7 +130,7 @@
     "storage": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["disks", "drive_health", "partitions", "bitlocker_volumes"],
+      "required": ["disks", "drive_health", "partitions", "bitlocker_volumes", "bitlocker_inventory"],
       "properties": {
         "disks": {
           "type": "array",
@@ -145,17 +156,17 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["device_id"],
+            "required": ["device_id", "temperature_celsius", "wear_percent", "power_on_hours", "read_errors_total", "write_errors_total"],
             "properties": {
               "device_id": { "type": "string" },
               "friendly_name": { "type": "string" },
               "media_type": { "type": "string" },
               "health_status": { "type": "string" },
-              "temperature_celsius": { "type": "integer", "minimum": 0 },
-              "wear_percent": { "type": "integer", "minimum": 0 },
-              "power_on_hours": { "type": "integer", "minimum": 0 },
-              "read_errors_total": { "type": "integer", "minimum": 0 },
-              "write_errors_total": { "type": "integer", "minimum": 0 }
+              "temperature_celsius": { "$ref": "#/$defs/nullableUInt" },
+              "wear_percent": { "$ref": "#/$defs/nullableUInt" },
+              "power_on_hours": { "$ref": "#/$defs/nullableUInt" },
+              "read_errors_total": { "$ref": "#/$defs/nullableUInt" },
+              "write_errors_total": { "$ref": "#/$defs/nullableUInt" }
             }
           }
         },
@@ -177,17 +188,33 @@
           }
         },
         "bitlocker_volumes": {
-          "type": "array",
+          "description": "BitLocker volumes when the provider was queried. Must be null when bitlocker_inventory.status is unavailable; an empty array means the provider succeeded and found no volumes.",
+          "type": ["array", "null"],
           "items": {
             "type": "object",
             "additionalProperties": false,
             "required": ["mount_point"],
             "properties": {
               "mount_point": { "type": "string" },
-              "volume_status": { "type": "string" },
-              "protection_status": { "type": "string" },
-              "lock_status": { "type": "string" },
-              "encryption_method": { "type": "string" }
+              "volume_status": { "type": ["string", "null"] },
+              "protection_status": { "type": ["string", "null"] },
+              "lock_status": { "type": ["string", "null"] },
+              "encryption_method": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "bitlocker_inventory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["ok", "unavailable", "partial"],
+              "description": "ok = provider queried successfully; unavailable = provider/namespace failed; partial = some volume fields were incomplete."
+            },
+            "error": {
+              "type": "string",
+              "description": "Provider error details when status is unavailable or partial."
             }
           }
         }
@@ -225,7 +252,14 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "product_name": { "type": "string" },
+            "raw_product_name": {
+              "type": "string",
+              "description": "Unmodified ProductName from the offline SOFTWARE hive."
+            },
+            "product_name": {
+              "type": "string",
+              "description": "Normalized display name. Client builds >= 22000 rewrite legacy Windows 10 ProductName values to Windows 11; Server products are not rewritten."
+            },
             "display_version": { "type": "string" },
             "edition_id": { "type": "string" },
             "installation_type": { "type": "string" },

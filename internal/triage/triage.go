@@ -274,6 +274,11 @@ func addStorageFindings(assessment *diagnosis.Assessment, report diagnostics.Rep
 }
 
 func addBitLockerFindings(assessment *diagnosis.Assessment, report diagnostics.Report) {
+	if report.Storage.BitLockerInventory.Status == diagnostics.BitLockerStatusUnavailable || report.Storage.BitLockerVolumes == nil {
+		// Availability is reported through collector checks / evidence.sources-incomplete.
+		// A null volume list must never be treated as "no locked volumes".
+		return
+	}
 	locked := 0
 	for _, volume := range report.Storage.BitLockerVolumes {
 		if strings.EqualFold(volume.LockStatus, "locked") {
