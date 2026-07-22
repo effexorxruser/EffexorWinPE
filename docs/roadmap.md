@@ -12,8 +12,10 @@
 
 - [ ] Build the first ISO on a Windows 11 ADK machine.
 - [ ] Verify UEFI boot on a virtual machine and two physical PCs.
-- [ ] Inventory disks, partitions, BitLocker state, firmware mode, memory, CPU, and network adapters.
-- [ ] Detect offline Windows version and boot configuration.
+- [x] Implement inventory for disks, reliability counters, partitions, BitLocker state, firmware mode, memory, CPU, and network adapters.
+- [x] Implement offline Windows version detection and visible BCD-store discovery.
+- [ ] Validate every inventory source in the first WinPE build and record hardware-specific gaps.
+- [ ] Inspect BCD entries and correlate them with detected Windows installations.
 - [ ] Export JSON and readable HTML reports to technician storage.
 - [ ] Add an explicit privacy preview before export.
 

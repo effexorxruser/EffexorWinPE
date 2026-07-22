@@ -23,4 +23,13 @@ func TestCollectProducesVersionedReport(t *testing.T) {
 	if len(report.Checks) == 0 {
 		t.Fatal("checks are empty")
 	}
+	if report.Hardware.FirmwareMode == "" {
+		t.Fatal("firmware mode is empty")
+	}
+	if report.Storage.Disks == nil || report.Storage.DriveHealth == nil || report.Storage.Partitions == nil || report.Storage.BitLockerVolumes == nil {
+		t.Fatal("storage arrays must be initialized")
+	}
+	if report.Boot.BCDStores == nil {
+		t.Fatal("BCD stores array must be initialized")
+	}
 }

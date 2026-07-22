@@ -2,7 +2,7 @@ package diagnostics
 
 import "time"
 
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 type Report struct {
 	SchemaVersion string         `json:"schema_version"`
@@ -10,6 +10,9 @@ type Report struct {
 	CollectedAt   time.Time      `json:"collected_at"`
 	Collector     Collector      `json:"collector"`
 	Environment   Environment    `json:"environment"`
+	Hardware      Hardware       `json:"hardware"`
+	Storage       Storage        `json:"storage"`
+	Boot          Boot           `json:"boot"`
 	Installations []Installation `json:"windows_installations"`
 	Checks        []Check        `json:"checks"`
 	Privacy       Privacy        `json:"privacy"`
@@ -26,9 +29,107 @@ type Environment struct {
 	Hostname    string `json:"hostname,omitempty"`
 }
 
+type Hardware struct {
+	FirmwareMode    string           `json:"firmware_mode"`
+	System          System           `json:"system"`
+	Processor       Processor        `json:"processor"`
+	Memory          Memory           `json:"memory"`
+	NetworkAdapters []NetworkAdapter `json:"network_adapters"`
+}
+
+type System struct {
+	Manufacturer string `json:"manufacturer,omitempty"`
+	Model        string `json:"model,omitempty"`
+}
+
+type Processor struct {
+	Name              string `json:"name,omitempty"`
+	Cores             uint32 `json:"cores"`
+	LogicalProcessors uint32 `json:"logical_processors"`
+}
+
+type Memory struct {
+	TotalPhysicalBytes uint64 `json:"total_physical_bytes"`
+}
+
+type NetworkAdapter struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status,omitempty"`
+}
+
+type Storage struct {
+	Disks            []Disk            `json:"disks"`
+	DriveHealth      []DriveHealth     `json:"drive_health"`
+	Partitions       []Partition       `json:"partitions"`
+	BitLockerVolumes []BitLockerVolume `json:"bitlocker_volumes"`
+}
+
+type DriveHealth struct {
+	DeviceID         string  `json:"device_id"`
+	FriendlyName     string  `json:"friendly_name,omitempty"`
+	MediaType        string  `json:"media_type,omitempty"`
+	HealthStatus     string  `json:"health_status,omitempty"`
+	TemperatureC     *uint64 `json:"temperature_celsius,omitempty"`
+	WearPercent      *uint64 `json:"wear_percent,omitempty"`
+	PowerOnHours     *uint64 `json:"power_on_hours,omitempty"`
+	ReadErrorsTotal  *uint64 `json:"read_errors_total,omitempty"`
+	WriteErrorsTotal *uint64 `json:"write_errors_total,omitempty"`
+}
+
+type Disk struct {
+	Number            int    `json:"number"`
+	FriendlyName      string `json:"friendly_name,omitempty"`
+	BusType           string `json:"bus_type,omitempty"`
+	SizeBytes         uint64 `json:"size_bytes"`
+	PartitionStyle    string `json:"partition_style,omitempty"`
+	HealthStatus      string `json:"health_status,omitempty"`
+	OperationalStatus string `json:"operational_status,omitempty"`
+	IsBoot            bool   `json:"is_boot"`
+	IsSystem          bool   `json:"is_system"`
+}
+
+type Partition struct {
+	DiskNumber      int    `json:"disk_number"`
+	PartitionNumber int    `json:"partition_number"`
+	DriveLetter     string `json:"drive_letter,omitempty"`
+	SizeBytes       uint64 `json:"size_bytes"`
+	Type            string `json:"type,omitempty"`
+	GPTType         string `json:"gpt_type,omitempty"`
+	IsActive        bool   `json:"is_active"`
+}
+
+type BitLockerVolume struct {
+	MountPoint       string `json:"mount_point"`
+	VolumeStatus     string `json:"volume_status,omitempty"`
+	ProtectionStatus string `json:"protection_status,omitempty"`
+	LockStatus       string `json:"lock_status,omitempty"`
+	EncryptionMethod string `json:"encryption_method,omitempty"`
+}
+
+type Boot struct {
+	FirmwareMode string     `json:"firmware_mode"`
+	BCDStores    []BCDStore `json:"bcd_stores"`
+}
+
+type BCDStore struct {
+	Path string `json:"path"`
+	Kind string `json:"kind"`
+}
+
 type Installation struct {
-	Root       string `json:"root"`
-	SystemHive string `json:"system_hive"`
+	Root         string          `json:"root"`
+	SystemHive   string          `json:"system_hive"`
+	SoftwareHive string          `json:"software_hive"`
+	Version      *WindowsVersion `json:"version,omitempty"`
+}
+
+type WindowsVersion struct {
+	ProductName      string `json:"product_name,omitempty"`
+	DisplayVersion   string `json:"display_version,omitempty"`
+	EditionID        string `json:"edition_id,omitempty"`
+	InstallationType string `json:"installation_type,omitempty"`
+	Build            string `json:"build,omitempty"`
 }
 
 type Check struct {

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://anp-rescue.local/contracts/diagnostic-report.schema.json",
+  "$id": "https://effexorwinpe.local/contracts/diagnostic-report.schema.json",
   "title": "ANP Rescue diagnostic report",
   "type": "object",
   "additionalProperties": false,
@@ -10,12 +10,15 @@
     "collected_at",
     "collector",
     "environment",
+    "hardware",
+    "storage",
+    "boot",
     "windows_installations",
     "checks",
     "privacy"
   ],
   "properties": {
-    "schema_version": { "const": "1.0.0" },
+    "schema_version": { "const": "1.1.0" },
     "report_id": { "type": "string", "minLength": 16 },
     "collected_at": { "type": "string", "format": "date-time" },
     "collector": {
@@ -40,30 +43,16 @@
         }
       }
     },
+    "hardware": { "$ref": "#/$defs/hardware" },
+    "storage": { "$ref": "#/$defs/storage" },
+    "boot": { "$ref": "#/$defs/boot" },
     "windows_installations": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["root", "system_hive"],
-        "properties": {
-          "root": { "type": "string" },
-          "system_hive": { "type": "string" }
-        }
-      }
+      "items": { "$ref": "#/$defs/windowsInstallation" }
     },
     "checks": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["id", "status", "summary"],
-        "properties": {
-          "id": { "type": "string" },
-          "status": { "enum": ["ok", "warning", "error", "unknown"] },
-          "summary": { "type": "string" }
-        }
-      }
+      "items": { "$ref": "#/$defs/check" }
     },
     "privacy": {
       "type": "object",
@@ -76,6 +65,183 @@
           "items": { "type": "string" },
           "uniqueItems": true
         }
+      }
+    }
+  },
+  "$defs": {
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware_mode", "system", "processor", "memory", "network_adapters"],
+      "properties": {
+        "firmware_mode": { "enum": ["uefi", "bios", "unknown"] },
+        "system": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "manufacturer": { "type": "string" },
+            "model": { "type": "string" }
+          }
+        },
+        "processor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["cores", "logical_processors"],
+          "properties": {
+            "name": { "type": "string" },
+            "cores": { "type": "integer", "minimum": 0 },
+            "logical_processors": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "memory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["total_physical_bytes"],
+          "properties": {
+            "total_physical_bytes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "network_adapters": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["disks", "drive_health", "partitions", "bitlocker_volumes"],
+      "properties": {
+        "disks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["number", "size_bytes", "is_boot", "is_system"],
+            "properties": {
+              "number": { "type": "integer", "minimum": 0 },
+              "friendly_name": { "type": "string" },
+              "bus_type": { "type": "string" },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "partition_style": { "type": "string" },
+              "health_status": { "type": "string" },
+              "operational_status": { "type": "string" },
+              "is_boot": { "type": "boolean" },
+              "is_system": { "type": "boolean" }
+            }
+          }
+        },
+        "drive_health": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["device_id"],
+            "properties": {
+              "device_id": { "type": "string" },
+              "friendly_name": { "type": "string" },
+              "media_type": { "type": "string" },
+              "health_status": { "type": "string" },
+              "temperature_celsius": { "type": "integer", "minimum": 0 },
+              "wear_percent": { "type": "integer", "minimum": 0 },
+              "power_on_hours": { "type": "integer", "minimum": 0 },
+              "read_errors_total": { "type": "integer", "minimum": 0 },
+              "write_errors_total": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "partitions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["disk_number", "partition_number", "size_bytes", "is_active"],
+            "properties": {
+              "disk_number": { "type": "integer", "minimum": 0 },
+              "partition_number": { "type": "integer", "minimum": 0 },
+              "drive_letter": { "type": "string", "maxLength": 1 },
+              "size_bytes": { "type": "integer", "minimum": 0 },
+              "type": { "type": "string" },
+              "gpt_type": { "type": "string" },
+              "is_active": { "type": "boolean" }
+            }
+          }
+        },
+        "bitlocker_volumes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["mount_point"],
+            "properties": {
+              "mount_point": { "type": "string" },
+              "volume_status": { "type": "string" },
+              "protection_status": { "type": "string" },
+              "lock_status": { "type": "string" },
+              "encryption_method": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "boot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware_mode", "bcd_stores"],
+      "properties": {
+        "firmware_mode": { "enum": ["uefi", "bios", "unknown"] },
+        "bcd_stores": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "kind"],
+            "properties": {
+              "path": { "type": "string" },
+              "kind": { "enum": ["uefi", "bios"] }
+            }
+          }
+        }
+      }
+    },
+    "windowsInstallation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "system_hive", "software_hive"],
+      "properties": {
+        "root": { "type": "string" },
+        "system_hive": { "type": "string" },
+        "software_hive": { "type": "string" },
+        "version": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "product_name": { "type": "string" },
+            "display_version": { "type": "string" },
+            "edition_id": { "type": "string" },
+            "installation_type": { "type": "string" },
+            "build": { "type": "string" }
+          }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "summary"],
+      "properties": {
+        "id": { "type": "string" },
+        "status": { "enum": ["ok", "warning", "error", "unknown"] },
+        "summary": { "type": "string" }
       }
     }
   }
