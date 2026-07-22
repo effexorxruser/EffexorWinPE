@@ -25,4 +25,15 @@ Diagnostic report `schema_version` is now `1.3.0`. Additive changes relative to 
 - `storage.drive_health` optional counters are explicitly nullable
 - `windows_installations[].version.raw_product_name` preserves the registry ProductName
 
-Readers that already tolerated unknown fields can accept 1.3.0 reports after updating the expected `schema_version`. Older `1.2.0` reports are not silently accepted by the current agent/gateway validators.
+Readers that already tolerated unknown fields can accept 1.3.0 reports after updating the expected `schema_version`.
+
+### Reading legacy `1.2.0` reports
+
+`diagnostics.DecodeReportJSON` (used by the agent and by `Report.UnmarshalJSON` for the gateway) accepts `1.2.0` only through an explicit migration to `1.3.0`:
+
+- strict `1.3.0` validation is unchanged for current reports;
+- a legacy empty `bitlocker_volumes` array without availability metadata becomes `bitlocker_inventory.status=unavailable` and `bitlocker_volumes=null` (never a trusted `ok`);
+- non-empty legacy BitLocker volumes migrate to `status=ok`;
+- network `status` codes and Windows product names are normalized during migration.
+
+JSON Schema `allOf` conditionals on `storage` require `bitlocker_volumes` to be `null` when status is `unavailable`, and an array when status is `ok` or `partial`.

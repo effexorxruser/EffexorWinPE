@@ -190,18 +190,7 @@
         "bitlocker_volumes": {
           "description": "BitLocker volumes when the provider was queried. Must be null when bitlocker_inventory.status is unavailable; an empty array means the provider succeeded and found no volumes.",
           "type": ["array", "null"],
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["mount_point"],
-            "properties": {
-              "mount_point": { "type": "string" },
-              "volume_status": { "type": ["string", "null"] },
-              "protection_status": { "type": ["string", "null"] },
-              "lock_status": { "type": ["string", "null"] },
-              "encryption_method": { "type": ["string", "null"] }
-            }
-          }
+          "items": { "$ref": "#/$defs/bitlockerVolume" }
         },
         "bitlocker_inventory": {
           "type": "object",
@@ -218,6 +207,55 @@
             }
           }
         }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "bitlocker_inventory": {
+                "properties": { "status": { "const": "unavailable" } },
+                "required": ["status"]
+              }
+            },
+            "required": ["bitlocker_inventory"]
+          },
+          "then": {
+            "properties": {
+              "bitlocker_volumes": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "bitlocker_inventory": {
+                "properties": { "status": { "enum": ["ok", "partial"] } },
+                "required": ["status"]
+              }
+            },
+            "required": ["bitlocker_inventory"]
+          },
+          "then": {
+            "properties": {
+              "bitlocker_volumes": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/bitlockerVolume" }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "bitlockerVolume": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mount_point"],
+      "properties": {
+        "mount_point": { "type": "string" },
+        "volume_status": { "type": ["string", "null"] },
+        "protection_status": { "type": ["string", "null"] },
+        "lock_status": { "type": ["string", "null"] },
+        "encryption_method": { "type": ["string", "null"] }
       }
     },
     "boot": {

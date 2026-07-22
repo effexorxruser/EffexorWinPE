@@ -120,11 +120,11 @@ type Partition struct {
 }
 
 type BitLockerVolume struct {
-	MountPoint       string `json:"mount_point"`
-	VolumeStatus     string `json:"volume_status,omitempty"`
-	ProtectionStatus string `json:"protection_status,omitempty"`
-	LockStatus       string `json:"lock_status,omitempty"`
-	EncryptionMethod string `json:"encryption_method,omitempty"`
+	MountPoint       string  `json:"mount_point"`
+	VolumeStatus     *string `json:"volume_status"`
+	ProtectionStatus *string `json:"protection_status"`
+	LockStatus       *string `json:"lock_status"`
+	EncryptionMethod *string `json:"encryption_method"`
 }
 
 type Boot struct {

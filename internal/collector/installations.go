@@ -9,9 +9,9 @@ import (
 // filterOfflineWindowsInstallations removes the currently running Windows/WinPE
 // root from the offline installation list. Runtime exclusion is based on the
 // resolved SystemRoot install path, not a hard-coded X: drive letter.
-// When exists is non-nil, roots that look like WinPE media (MiniNT/winpeshl/startnet)
-// are also omitted so a mounted rescue image is not treated as an installed Windows.
-func filterOfflineWindowsInstallations(installations []diagnostics.Installation, runtimeInstallRoot string, exists func(string) bool) []diagnostics.Installation {
+// When runtimeIsWinPE is true and exists is non-nil, roots with MiniNT/winpeshl/startnet
+// markers are also omitted so a mounted rescue image is not treated as installed Windows.
+func filterOfflineWindowsInstallations(installations []diagnostics.Installation, runtimeInstallRoot string, runtimeIsWinPE bool, exists func(string) bool) []diagnostics.Installation {
 	if len(installations) == 0 {
 		return []diagnostics.Installation{}
 	}
@@ -19,10 +19,7 @@ func filterOfflineWindowsInstallations(installations []diagnostics.Installation,
 	filtered := make([]diagnostics.Installation, 0, len(installations))
 	for _, installation := range installations {
 		root := normalizeWindowsInstallRoot(installation.Root)
-		if runtimeInstallRoot != "" && sameWindowsPath(root, runtimeInstallRoot) {
-			continue
-		}
-		if exists != nil && looksLikeWinPERoot(root, exists) {
+		if shouldExcludeWindowsInstallation(root, runtimeInstallRoot, runtimeIsWinPE, exists) {
 			continue
 		}
 		installation.Root = ensureTrailingSlash(root)
@@ -33,6 +30,16 @@ func filterOfflineWindowsInstallations(installations []diagnostics.Installation,
 		filtered = append(filtered, installation)
 	}
 	return filtered
+}
+
+func shouldExcludeWindowsInstallation(root, runtimeInstallRoot string, runtimeIsWinPE bool, exists func(string) bool) bool {
+	if runtimeInstallRoot != "" && sameWindowsPath(root, runtimeInstallRoot) {
+		return true
+	}
+	if runtimeIsWinPE && exists != nil && looksLikeWinPERoot(root, exists) {
+		return true
+	}
+	return false
 }
 
 // normalizeWindowsInstallRoot converts a SystemRoot or installation path into

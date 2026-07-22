@@ -29,7 +29,7 @@ func findWindowsInstallations() []diagnostics.Installation {
 			Version:      readOfflineWindowsVersion(softwareHive, letter),
 		})
 	}
-	return filterOfflineWindowsInstallations(installations, currentRuntimeWindowsRoot(), pathExists)
+	return filterOfflineWindowsInstallations(installations, currentRuntimeWindowsRoot(), currentEnvironmentIsWinPE(), pathExists)
 }
 
 func readOfflineWindowsVersion(softwareHive string, driveLetter rune) *diagnostics.WindowsVersion {

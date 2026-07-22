@@ -36,52 +36,7 @@ func collectPlatform() (diagnostics.Hardware, diagnostics.Storage, diagnostics.B
 		FirmwareMode: payload.Hardware.FirmwareMode,
 		BCDStores:    findBCDStores(),
 	}
-	inventoryStatus := "ok"
-	inventorySuffix := ""
-	if len(payload.Errors) > 0 {
-		inventoryStatus = "warning"
-		inventorySuffix = fmt.Sprintf("; %d source(s) unavailable", len(payload.Errors))
-	}
-	bitLockerCount := 0
-	if payload.Storage.BitLockerVolumes != nil {
-		bitLockerCount = len(payload.Storage.BitLockerVolumes)
-	}
-	checks := []diagnostics.Check{{
-		ID:      "platform.inventory",
-		Status:  inventoryStatus,
-		Summary: fmt.Sprintf("Collected %d disk(s), %d drive-health record(s), %d partition(s), %d network adapter(s), and BitLocker status %s (%d volume(s))%s", len(payload.Storage.Disks), len(payload.Storage.DriveHealth), len(payload.Storage.Partitions), len(payload.Hardware.NetworkAdapters), payload.Storage.BitLockerInventory.Status, bitLockerCount, inventorySuffix),
-	}}
-	for index, sourceError := range payload.Errors {
-		checks = append(checks, diagnostics.Check{
-			ID:      fmt.Sprintf("platform.inventory.source.%d", index+1),
-			Status:  "unknown",
-			Summary: sourceError,
-		})
-	}
-	if payload.Storage.BitLockerInventory.Status == diagnostics.BitLockerStatusUnavailable {
-		summary := "BitLocker inventory is unavailable"
-		if payload.Storage.BitLockerInventory.Error != "" {
-			summary = "BitLocker inventory is unavailable: " + payload.Storage.BitLockerInventory.Error
-		}
-		checks = append(checks, diagnostics.Check{
-			ID:      "storage.bitlocker_inventory",
-			Status:  "unknown",
-			Summary: summary,
-		})
-	}
-	if len(boot.BCDStores) == 0 {
-		checks = append(checks, diagnostics.Check{
-			ID:      "boot.bcd_stores",
-			Status:  "warning",
-			Summary: "No BCD store was found on a mounted volume",
-		})
-	} else {
-		checks = append(checks, diagnostics.Check{
-			ID:      "boot.bcd_stores",
-			Status:  "ok",
-			Summary: fmt.Sprintf("Found %d BCD store(s) on mounted volumes", len(boot.BCDStores)),
-		})
-	}
+	checks := buildPlatformChecks(payload.Storage, len(payload.Hardware.NetworkAdapters), len(boot.BCDStores), payload.Errors)
 	return payload.Hardware, payload.Storage, boot, checks
 }
 
@@ -348,7 +303,8 @@ try {
     }
   }
 } catch {
-  $errors += 'BitLocker inventory is unavailable: ' + $_.Exception.Message
+  # BitLocker failures are reported only through bitlocker_inventory / storage.bitlocker_inventory.
+  # Do not also append a generic platform.inventory.source error for the same provider.
   $bitLockerVolumes = $null
   $bitLockerInventory = [ordered]@{ status = 'unavailable'; error = $_.Exception.Message }
 }

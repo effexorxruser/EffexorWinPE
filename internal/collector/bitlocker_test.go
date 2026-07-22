@@ -56,13 +56,17 @@ func TestNormalizeBitLockerInventoryNullFieldsPartial(t *testing.T) {
 
 func TestNormalizeBitLockerInventoryNormalVolume(t *testing.T) {
 	t.Parallel()
+	volumeStatus := "FullyEncrypted"
+	protection := "On"
+	lock := "Locked"
+	method := "XTS_AES_256"
 	storage := diagnostics.Storage{
 		BitLockerVolumes: []diagnostics.BitLockerVolume{{
 			MountPoint:       "C:",
-			VolumeStatus:     "FullyEncrypted",
-			ProtectionStatus: "On",
-			LockStatus:       "Locked",
-			EncryptionMethod: "XTS_AES_256",
+			VolumeStatus:     &volumeStatus,
+			ProtectionStatus: &protection,
+			LockStatus:       &lock,
+			EncryptionMethod: &method,
 		}},
 		BitLockerInventory: diagnostics.BitLockerInventory{Status: diagnostics.BitLockerStatusOK},
 	}

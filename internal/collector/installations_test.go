@@ -8,7 +8,7 @@ import (
 
 func TestFilterOfflineWindowsInstallationsExcludesRuntimeWinPE(t *testing.T) {
 	t.Parallel()
-	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `X:\`), `X:\Windows`, nil)
+	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `X:\`), `X:\Windows`, true, nil)
 	if len(got) != 1 || got[0].Root != `D:\` {
 		t.Fatalf("got %+v, want only D:\\", got)
 	}
@@ -16,7 +16,7 @@ func TestFilterOfflineWindowsInstallationsExcludesRuntimeWinPE(t *testing.T) {
 
 func TestFilterOfflineWindowsInstallationsKeepsTwoRealInstalls(t *testing.T) {
 	t.Parallel()
-	got := filterOfflineWindowsInstallations(candidateInstallations(`C:\`, `D:\`, `X:\`), `X:\WINDOWS`, nil)
+	got := filterOfflineWindowsInstallations(candidateInstallations(`C:\`, `D:\`, `X:\`), `X:\WINDOWS`, true, nil)
 	if len(got) != 2 {
 		t.Fatalf("got %d installations, want 2", len(got))
 	}
@@ -27,7 +27,7 @@ func TestFilterOfflineWindowsInstallationsKeepsTwoRealInstalls(t *testing.T) {
 
 func TestFilterOfflineWindowsInstallationsOnlyRuntime(t *testing.T) {
 	t.Parallel()
-	got := filterOfflineWindowsInstallations(candidateInstallations(`X:\`), `X:\Windows`, nil)
+	got := filterOfflineWindowsInstallations(candidateInstallations(`X:\`), `X:\Windows`, true, nil)
 	if len(got) != 0 {
 		t.Fatalf("got %d installations, want 0", len(got))
 	}
@@ -35,20 +35,39 @@ func TestFilterOfflineWindowsInstallationsOnlyRuntime(t *testing.T) {
 
 func TestFilterOfflineWindowsInstallationsRuntimeNotHardCodedToX(t *testing.T) {
 	t.Parallel()
-	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `W:\`), `W:\Windows`, nil)
+	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `W:\`), `W:\Windows`, true, nil)
 	if len(got) != 1 || got[0].Root != `D:\` {
 		t.Fatalf("got %+v, want only D:\\ when runtime root is W:\\", got)
 	}
 }
 
-func TestFilterOfflineWindowsInstallationsExcludesWinPEMarkers(t *testing.T) {
+func TestFilterOfflineWindowsInstallationsUsesWinPERuntimeMarkers(t *testing.T) {
 	t.Parallel()
 	exists := func(path string) bool {
 		return path == `Y:\Windows\System32\winpeshl.exe`
 	}
-	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `Y:\`), ``, exists)
+	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `Y:\`), ``, true, exists)
 	if len(got) != 1 || got[0].Root != `D:\` {
 		t.Fatalf("got %+v, want only D:\\ after WinPE marker exclusion", got)
+	}
+}
+
+func TestFilterOfflineWindowsInstallationsKeepsWinPEMediaOutsideWinPE(t *testing.T) {
+	t.Parallel()
+	exists := func(path string) bool {
+		return path == `Y:\Windows\System32\winpeshl.exe`
+	}
+	// Marker-based exclusion applies only while the live environment is WinPE.
+	got := filterOfflineWindowsInstallations(candidateInstallations(`D:\`, `Y:\`), `C:\Windows`, false, exists)
+	if len(got) != 2 {
+		t.Fatalf("got %d installations, want 2 when runtime is not WinPE", len(got))
+	}
+}
+
+func TestCurrentEnvironmentIsWinPEFalseOutsideWindowsBuild(t *testing.T) {
+	t.Parallel()
+	if currentEnvironmentIsWinPE() {
+		t.Fatal("currentEnvironmentIsWinPE() = true on non-Windows test host")
 	}
 }
 

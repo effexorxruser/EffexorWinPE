@@ -45,7 +45,8 @@ func TestAnalyzeFlagsUnhealthyStorageWithoutWriteActions(t *testing.T) {
 
 func TestAnalyzeDoesNotCallLockedBitLockerAFault(t *testing.T) {
 	report := baseReport()
-	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{MountPoint: "C:", LockStatus: "Locked"}}
+	lock := "Locked"
+	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{MountPoint: "C:", LockStatus: &lock}}
 
 	assessment, err := Analyze(report, time.Now())
 	if err != nil {
@@ -85,6 +86,35 @@ func TestAnalyzeHealthyEvidenceStaysLowConfidence(t *testing.T) {
 	}
 	if assessment.Findings[0].Confidence != diagnosis.ConfidenceLow {
 		t.Fatalf("confidence = %q, want low", assessment.Findings[0].Confidence)
+	}
+}
+
+func TestAnalyzeMigratedLegacyPhysicalSmokeReport(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "diagnostics", "testdata", "physical-smoke-legacy-1.2.0.json"))
+	if err != nil {
+		t.Fatalf("read legacy fixture: %v", err)
+	}
+	var report diagnostics.Report
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("Unmarshal legacy report: %v", err)
+	}
+	if report.SchemaVersion != diagnostics.SchemaVersion {
+		t.Fatalf("schema_version = %q, want migrated %q", report.SchemaVersion, diagnostics.SchemaVersion)
+	}
+	assessment, err := Analyze(report, time.Unix(1700000000, 0).UTC())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if !hasFinding(assessment, "windows.multiple-installations") {
+		t.Fatal("legacy fixture still contains two recorded installs; multiple-installations should remain")
+	}
+	if !hasFinding(assessment, "evidence.sources-incomplete") {
+		t.Fatal("legacy unavailable BitLocker signal must keep sources-incomplete after migration")
+	}
+	for _, step := range assessment.NextSteps {
+		if step.Risk != diagnosis.RiskReadOnly || step.RequiresConfirmation {
+			t.Fatalf("offline next step is not read-only: %+v", step)
+		}
 	}
 }
 

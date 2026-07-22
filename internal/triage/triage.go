@@ -281,7 +281,7 @@ func addBitLockerFindings(assessment *diagnosis.Assessment, report diagnostics.R
 	}
 	locked := 0
 	for _, volume := range report.Storage.BitLockerVolumes {
-		if strings.EqualFold(volume.LockStatus, "locked") {
+		if volume.LockStatus != nil && strings.EqualFold(*volume.LockStatus, "locked") {
 			locked++
 		}
 	}
