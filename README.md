@@ -13,11 +13,13 @@ Bootstrap/MVP foundation:
 - versioned JSON diagnostic contract;
 - read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
 - offline evidence-backed diagnostic preflight with confidence, follow-up questions, limitations, and typed read-only next steps;
+- resumable diagnostic sessions with technician symptoms, answers, and a compact audit timeline;
+- an opt-in HTTPS client for the future model-backed gateway, with a removable device token and a separate upload approval flag;
 - payload and driver manifests;
 - safety and secret-handling rules;
 - initial CI workflow.
 
-No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report and offline preflight assessment. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. A graphical launcher and backend connection come next.
+No distributable ISO is committed. The current image boots to a command prompt after creating an initial diagnostic report, offline preflight assessment, and resumable diagnostic-session file. Hardware collection is best-effort: unavailable WinPE components become explicit `unknown` checks instead of aborting the report. The preflight cannot execute repairs and never treats missing evidence as proof that a device is healthy. A graphical launcher and gateway backend come next.
 
 ## Repository layout
 
@@ -36,6 +38,22 @@ payload/EffexorWinPE/         Files copied into X:\\EffexorWinPE in WinPE
 The image payload is copied from the closed allowlist in `manifests/image-payload.json`.
 Files merely present under `payload/EffexorWinPE` are never included automatically, so
 local reports, credentials, and other ignored build-host data cannot leak into an ISO.
+
+## Diagnostic session and agent
+
+The automatic boot flow creates `initial-diagnosis-session.json` beside the initial assessment. Resume it from the WinPE command prompt to add context:
+
+```powershell
+X:\EffexorWinPE\bin\effexorwinpe-agent.exe `
+  --input X:\EffexorWinPE\reports\initial.json `
+  --output X:\EffexorWinPE\reports\initial-diagnosis.json `
+  --session X:\EffexorWinPE\reports\initial-diagnosis-session.json `
+  --interactive
+```
+
+For scripting, repeat `--symptom` and use `--answer question-id=value`. Russian `да`, `нет`, and `не знаю` are normalized for yes/no questions.
+
+Online submission is disabled unless the technician supplies an HTTPS gateway URL, an external token file, and `--approve-upload` together. This is an explicit upload of the report plus session context; symptom free text can contain personal data and must be reviewed first. The backend endpoint is only a contract at this stage, so offline diagnosis remains the working mode.
 
 ## Build prerequisites
 
