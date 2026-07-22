@@ -4,9 +4,9 @@
   "title": "EffexorWinPE diagnostic assessment",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "report_id", "generated_at", "mode", "summary", "findings", "questions", "next_steps", "limitations"],
+  "required": ["schema_version", "report_id", "generated_at", "mode", "summary", "findings", "questions", "next_steps", "limitations", "sources"],
   "properties": {
-    "schema_version": { "const": "0.1.0" },
+    "schema_version": { "const": "0.2.0" },
     "report_id": { "type": "string", "minLength": 1 },
     "generated_at": { "type": "string", "format": "date-time" },
     "mode": { "enum": ["offline_preflight", "online_agent"] },
@@ -25,14 +25,15 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title", "severity", "confidence", "rationale", "evidence_refs"],
+        "required": ["id", "title", "severity", "confidence", "rationale", "evidence_refs", "source_refs"],
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "title": { "type": "string", "minLength": 1 },
           "severity": { "$ref": "#/$defs/severity" },
           "confidence": { "enum": ["low", "medium", "high"] },
           "rationale": { "type": "string", "minLength": 1 },
-          "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true }
+          "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+          "source_refs": { "type": "array", "items": { "type": "string", "format": "uri", "pattern": "^https://" }, "uniqueItems": true }
         }
       }
     },
@@ -75,7 +76,20 @@
         }
       }
     },
-    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 }
+    "limitations": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1 },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "url", "domain"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "url": { "type": "string", "format": "uri", "pattern": "^https://" },
+          "domain": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
   },
   "$defs": {
     "severity": { "enum": ["info", "warning", "critical", "unknown"] }

@@ -42,7 +42,7 @@ func main() {
 	deviceTokenFile := flag.String("device-token-file", "", "path to a removable device-token file")
 	approveUpload := flag.Bool("approve-upload", false, "confirm that the technician reviewed and approved this upload")
 	onlineOutput := flag.String("online-output", "online-diagnosis.json", "path for a completed online assessment")
-	gatewayTimeout := flag.Duration("gateway-timeout", 90*time.Second, "maximum time to wait for an online assessment")
+	gatewayTimeout := flag.Duration("gateway-timeout", 3*time.Minute, "maximum time to wait for an online assessment")
 	var symptoms repeatedFlag
 	var answers repeatedFlag
 	flag.Var(&symptoms, "symptom", "technician-observed symptom; may be supplied more than once")

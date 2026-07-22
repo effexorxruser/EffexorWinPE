@@ -12,7 +12,7 @@ flowchart TD
     POLICY --> LLM["Model provider"]
 ```
 
-The rescue repository owns boot media composition, local diagnostics, deterministic preflight, report review, and execution of explicitly approved typed operations. It does not own general model-backed reasoning, API secrets, customer records, or the canonical repair knowledge base.
+The repository owns boot media composition, local diagnostics, deterministic preflight, report review, the narrow gateway protocol, and server-side model policy. The ISO never owns provider credentials, customer records, or unrestricted model-generated execution.
 
 ## Trust zones
 
@@ -21,7 +21,7 @@ The rescue repository owns boot media composition, local diagnostics, determinis
 | Immutable image | Collector, launcher, schemas, public configuration | No reusable secrets or client data |
 | Technician storage | Device token, exported reports, optional tool cache | Encrypt where practical; removable and revocable |
 | Client machine | Disks, registry, logs, dumps | Read-only until a repair action is confirmed |
-| EffexorWinPE gateway | API credentials, policy, model access, audit log | Authenticated, rate-limited, centrally revocable |
+| EffexorWinPE gateway | API credentials, policy, model access, ephemeral jobs | Authenticated, bounded, centrally revocable |
 
 ## Diagnostic flow
 
@@ -31,10 +31,10 @@ The rescue repository owns boot media composition, local diagnostics, determinis
 4. Produce a conservative offline preflight with evidence references and read-only next steps.
 5. Preview/redact report fields locally.
 6. Optionally submit approved data to the gateway.
-7. Receive model-backed findings and proposed typed actions.
+7. Receive model-backed findings, retrieved sources, and proposed typed read-only actions.
 8. Preview the exact effect and require technician confirmation.
 9. Execute locally and append the result to the audit log.
 
 ## Why Go for WinPE executables
 
-Static Go binaries minimize runtime dependencies in WinPE, are easy to cross-compile for Windows x64, and work well for collectors and a small launcher. The shared backend can keep its existing stack; this repository deliberately does not force a backend rewrite.
+Static Go binaries minimize runtime dependencies in WinPE, are easy to cross-compile for Windows x64, and work well for collectors and a small launcher. The gateway uses the same dependency-light Go module for the MVP, while its provider interface keeps the client protocol independent of a specific model vendor.

@@ -1,0 +1,33 @@
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/gateway/Dockerfile
+    restart: unless-stopped
+    command:
+      - -listen=:8080
+      - -device-token-sha256-file=/run/secrets/device_token_sha256
+      - -openai-api-key-file=/run/secrets/openai_api_key
+      - -model=${EFFEXORWINPE_MODEL:?set EFFEXORWINPE_MODEL}
+      - -source-domains-file=/etc/effexorwinpe/official-source-domains.txt
+      - -web-search=true
+    ports:
+      - 127.0.0.1:8080:8080
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    secrets:
+      - device_token_sha256
+      - openai_api_key
+    volumes:
+      - ./official-source-domains.txt:/etc/effexorwinpe/official-source-domains.txt:ro
+
+secrets:
+  device_token_sha256:
+    file: ./secrets/device-token-sha256.txt
+  openai_api_key:
+    file: ./secrets/openai-api-key.txt

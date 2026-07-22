@@ -1,0 +1,17 @@
+# Responses web search is restricted to these vendor-controlled domains.
+microsoft.com
+intel.com
+amd.com
+nvidia.com
+huawei.com
+hp.com
+dell.com
+lenovo.com
+asus.com
+acer.com
+samsung.com
+kingston.com
+crucial.com
+seagate.com
+wd.com
+sandisk.com

@@ -24,8 +24,8 @@ const (
 )
 
 type DiagnosisRequest struct {
-	DiagnosticReport  diagnostics.Report `json:"diagnostic_report"`
-	Session           session.Session    `json:"session"`
+	DiagnosticReport   diagnostics.Report `json:"diagnostic_report"`
+	Session            session.Session    `json:"session"`
 	TechnicianApproved bool               `json:"technician_approved"`
 }
 
@@ -142,6 +142,9 @@ func (c Client) poll(ctx context.Context, endpoint, token string) (diagnosis.Ass
 	if state.Status == "queued" || state.Status == "running" {
 		return diagnosis.Assessment{}, false, nil
 	}
+	if state.Status == "failed" {
+		return diagnosis.Assessment{}, false, fmt.Errorf("gateway analysis failed")
+	}
 	var assessment diagnosis.Assessment
 	if err := json.Unmarshal(data, &assessment); err != nil {
 		return diagnosis.Assessment{}, false, fmt.Errorf("decode gateway assessment: %w", err)
@@ -155,7 +158,7 @@ func (c Client) poll(ctx context.Context, endpoint, token string) (diagnosis.Ass
 func (c Client) do(ctx context.Context, method, endpoint, token string, payload []byte) (*http.Response, error) {
 	client := c.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{CheckRedirect: rejectRedirect}
 	}
 	var body io.Reader
 	if payload != nil {
@@ -176,6 +179,10 @@ func (c Client) do(ctx context.Context, method, endpoint, token string, payload 
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
 	return response, nil
+}
+
+func rejectRedirect(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 func parseEndpoint(raw string) (*url.URL, error) {

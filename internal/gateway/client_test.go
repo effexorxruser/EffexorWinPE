@@ -69,6 +69,7 @@ func TestDiagnoseSubmitsApprovedContextAndPollsForAssessment(t *testing.T) {
 				Questions:     []diagnosis.Question{},
 				NextSteps:     []diagnosis.NextStep{},
 				Limitations:   []string{"Test result"},
+				Sources:       []diagnosis.Source{},
 			})
 		default:
 			http.NotFound(writer, request)

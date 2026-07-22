@@ -2,7 +2,7 @@
 
 `effexorwinpe-agent.exe` is the first local layer of the technician assistant. It runs an offline deterministic preflight over `diagnostic-report.schema.json`, writes a `diagnosis.schema.json` assessment, and creates or resumes a `diagnostic-session.schema.json` session.
 
-It is intentionally useful without internet access, but it is not presented as the final AI diagnosis. Model-backed reasoning, the repair knowledge base, device-token policy, rate limits, and audit storage remain behind the dedicated EffexorWinPE gateway.
+It is intentionally useful without internet access, but it is not presented as the final AI diagnosis. Model-backed reasoning, device-token policy, official-source retrieval, and result validation remain behind the dedicated EffexorWinPE gateway.
 
 ## Current flow
 
@@ -18,11 +18,11 @@ The executable never accepts or emits arbitrary command strings. Offline next st
 
 ## Optional online flow
 
-The client now implements the narrow asynchronous gateway contract: submit an approved report and session, poll for an evidence-backed result, reject plaintext HTTP, bound request and response sizes, and save an `online_agent` assessment into the session history. The gateway backend itself is not part of the image and is not deployed yet.
+The client implements the narrow asynchronous gateway contract: submit an approved report and session, poll for an evidence-backed result, reject plaintext HTTP, bound request and response sizes, and save an `online_agent` assessment into the session history. The repository now contains the matching server; it remains outside the image and is deployed separately behind HTTPS.
 
 Supplying a gateway URL is not sufficient to upload. The technician must also provide a removable device-token file and `--approve-upload`. This makes online submission an explicit action after reviewing the report and free-text session context.
 
-The backend may eventually propose a broader typed operation, but the local policy layer must reject unknown operations, preview the exact effect, require confirmation for mutations, and append the result to an audit log.
+The MVP gateway accepts only the same closed read-only operation catalog as the offline preflight. A later repair executor must remain a separate local policy layer that rejects unknown operations, previews exact effects, requires confirmation for mutations, and appends results to an audit log.
 
 The OpenAI API key never crosses the gateway boundary. A removable technician device token will be separately enrolled, revocable, rate-limited, and stored outside the immutable ISO.
 

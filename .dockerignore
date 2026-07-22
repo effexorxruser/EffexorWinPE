@@ -1,0 +1,17 @@
+.git
+.gitignore
+out
+drivers/local
+tools/cache
+payload/EffexorWinPE/bin
+payload/EffexorWinPE/reports
+deploy/gateway/secrets
+*.iso
+*.wim
+*.vhd
+*.vhdx
+*.exe
+*.sys
+*.cab
+.env
+.env.*

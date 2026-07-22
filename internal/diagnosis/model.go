@@ -2,7 +2,7 @@ package diagnosis
 
 import "time"
 
-const SchemaVersion = "0.1.0"
+const SchemaVersion = "0.2.0"
 
 const (
 	ModeOfflinePreflight = "offline_preflight"
@@ -26,8 +26,8 @@ const (
 	AnswerFreeText = "free_text"
 )
 
-// Assessment is the local, deterministic preflight result. It is deliberately
-// evidence-first and contains no executable command strings.
+// Assessment is the shared evidence-first result for offline preflight and
+// online gateway analysis. It contains no executable command strings.
 type Assessment struct {
 	SchemaVersion string     `json:"schema_version"`
 	ReportID      string     `json:"report_id"`
@@ -38,6 +38,7 @@ type Assessment struct {
 	Questions     []Question `json:"questions"`
 	NextSteps     []NextStep `json:"next_steps"`
 	Limitations   []string   `json:"limitations"`
+	Sources       []Source   `json:"sources"`
 }
 
 type Summary struct {
@@ -53,6 +54,15 @@ type Finding struct {
 	Confidence   string   `json:"confidence"`
 	Rationale    string   `json:"rationale"`
 	EvidenceRefs []string `json:"evidence_refs"`
+	SourceRefs   []string `json:"source_refs"`
+}
+
+// Source is a URL actually returned by the gateway's retrieval provider. The
+// model cannot add an arbitrary URL to this list.
+type Source struct {
+	Title  string `json:"title"`
+	URL    string `json:"url"`
+	Domain string `json:"domain"`
 }
 
 type Question struct {
