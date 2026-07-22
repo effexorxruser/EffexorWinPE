@@ -62,23 +62,46 @@ Online submission is disabled unless the technician supplies an HTTPS gateway UR
 
 On a Windows 11 x64 build machine install:
 
-1. Windows ADK (Deployment Tools).
-2. Matching Windows PE add-on for the ADK.
+1. Windows ADK (Deployment Tools) from the [official Microsoft download page](https://learn.microsoft.com/windows-hardware/get-started/adk-install).
+2. The matching Windows PE add-on for that ADK. For an `amd64` image, choose an ADK release that supports x64 Windows 10/11 rather than an Arm64-only release.
 3. Go 1.24 or newer.
 4. PowerShell 7 recommended; Windows PowerShell 5.1 is sufficient for the initial scripts.
 
-Run from an elevated PowerShell session:
+Start **Deployment and Imaging Tools Environment** as administrator, then launch `powershell` (or `pwsh`) from that window so the ADK environment is inherited. From the repository root run:
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-./build/Test-Repository.ps1
-./build/Build-Payload.ps1
-./build/Build-WinPE.ps1
+.\build\Test-Repository.ps1
+.\build\Build-WinPE.ps1
 ```
 
-The ISO is written to `out/EffexorWinPE-amd64.iso` by default.
+`Build-WinPE.ps1` builds the payload automatically. The ISO is written to `out/EffexorWinPE-amd64.iso` by default. Record its size and digest before testing:
+
+```powershell
+Get-Item .\out\EffexorWinPE-amd64.iso |
+    Select-Object FullName, Length, LastWriteTime
+Get-FileHash .\out\EffexorWinPE-amd64.iso -Algorithm SHA256
+```
 
 On current ADK releases, pass `-BootEx` to create media signed for the UEFI 2023 CA. Keep the ordinary build available while testing older service hardware; this compatibility choice will become an explicit release profile before public distribution.
+
+## First boot smoke test
+
+Test the ISO in a VM before writing it to a USB drive. Boot waits for WinPE initialization, initializes wired networking, collects the system report, creates the offline assessment and session, and then opens `cmd.exe`.
+
+At the prompt, verify the expected files and network state:
+
+```batch
+dir X:\EffexorWinPE\reports
+ipconfig /all
+```
+
+Before shutting down, copy the JSON files to a writable attached disk. Use `diskpart` followed by `list volume` and `exit` to identify its drive letter; do not guess the letter. For example, if it is `E:`:
+
+```batch
+mkdir E:\EffexorWinPE-reports
+copy X:\EffexorWinPE\reports\*.json E:\EffexorWinPE-reports\
+```
 
 ## Safety model
 
