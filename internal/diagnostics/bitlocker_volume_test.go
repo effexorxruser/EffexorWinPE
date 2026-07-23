@@ -170,6 +170,56 @@ func TestMigrateLegacyEmptyBitLockerIsNotOK(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacyCompleteBitLockerVolumesAreOK(t *testing.T) {
+	t.Parallel()
+	inventory, volumes := migrateBitLockerV12([]bitLockerVolumeV12{{
+		MountPoint:       "C:",
+		VolumeStatus:     "FullyEncrypted",
+		ProtectionStatus: "On",
+		LockStatus:       "Locked",
+		EncryptionMethod: "XTS_AES_256",
+	}})
+	if inventory.Status != BitLockerStatusOK || inventory.Error != "" {
+		t.Fatalf("inventory = %+v, want ok without error", inventory)
+	}
+	if len(volumes) != 1 || volumes[0].VolumeStatus == nil || *volumes[0].VolumeStatus != "FullyEncrypted" {
+		t.Fatalf("volumes = %#v", volumes)
+	}
+}
+
+func TestMigrateLegacyIncompleteBitLockerVolumesArePartial(t *testing.T) {
+	t.Parallel()
+	inventory, volumes := migrateBitLockerV12([]bitLockerVolumeV12{
+		{
+			MountPoint:       "C:",
+			VolumeStatus:     "FullyEncrypted",
+			ProtectionStatus: "On",
+			LockStatus:       "Locked",
+			EncryptionMethod: "XTS_AES_256",
+		},
+		{
+			MountPoint:       "D:",
+			VolumeStatus:     "FullyEncrypted",
+			ProtectionStatus: "",
+			LockStatus:       "Unlocked",
+			EncryptionMethod: "XTS_AES_128",
+		},
+	})
+	const wantError = "One or more legacy BitLocker volume fields were incomplete"
+	if inventory.Status != BitLockerStatusPartial || inventory.Error != wantError {
+		t.Fatalf("inventory = %+v, want partial with %q", inventory, wantError)
+	}
+	if len(volumes) != 2 {
+		t.Fatalf("volumes len = %d, want 2", len(volumes))
+	}
+	if volumes[1].ProtectionStatus != nil {
+		t.Fatalf("missing ProtectionStatus must migrate to null, got %#v", volumes[1].ProtectionStatus)
+	}
+	if volumes[0].LockStatus == nil || *volumes[0].LockStatus != "Locked" {
+		t.Fatalf("complete volume fields must be preserved: %#v", volumes[0])
+	}
+}
+
 func strPtr(value string) *string { return &value }
 
 func testdataPath(t *testing.T, name string) string {

@@ -238,14 +238,25 @@ func migrateBitLockerV12(volumes []bitLockerVolumeV12) (BitLockerInventory, []Bi
 		}, nil
 	}
 	migrated := make([]BitLockerVolume, 0, len(volumes))
+	partial := false
 	for _, volume := range volumes {
-		migrated = append(migrated, BitLockerVolume{
+		item := BitLockerVolume{
 			MountPoint:       volume.MountPoint,
 			VolumeStatus:     nonEmptyStringPointer(volume.VolumeStatus),
 			ProtectionStatus: nonEmptyStringPointer(volume.ProtectionStatus),
 			LockStatus:       nonEmptyStringPointer(volume.LockStatus),
 			EncryptionMethod: nonEmptyStringPointer(volume.EncryptionMethod),
-		})
+		}
+		if item.VolumeStatus == nil || item.ProtectionStatus == nil || item.LockStatus == nil || item.EncryptionMethod == nil {
+			partial = true
+		}
+		migrated = append(migrated, item)
+	}
+	if partial {
+		return BitLockerInventory{
+			Status: BitLockerStatusPartial,
+			Error:  "One or more legacy BitLocker volume fields were incomplete",
+		}, migrated
 	}
 	return BitLockerInventory{Status: BitLockerStatusOK}, migrated
 }
