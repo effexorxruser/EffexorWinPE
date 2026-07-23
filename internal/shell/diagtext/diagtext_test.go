@@ -54,6 +54,34 @@ func TestHeadlineBySeverity(t *testing.T) {
 	}
 }
 
+func TestEnumsAndCheckSummaryRussian(t *testing.T) {
+	b, err := i18n.New(i18n.LocaleRuRU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsCyrillic(Severity(b, "critical")) {
+		t.Fatal("severity")
+	}
+	if !containsCyrillic(Confidence(b, "high")) {
+		t.Fatal("confidence")
+	}
+	if !containsCyrillic(Risk(b, "read_only")) {
+		t.Fatal("risk")
+	}
+	loc, tech := CheckSummary(b, "collector.runtime", "Collector runtime probe completed")
+	if !containsCyrillic(loc) || tech == "" {
+		t.Fatalf("check summary loc=%q tech=%q", loc, tech)
+	}
+	lim := Limitation(b, "Offline preflight does not contact the model gateway")
+	if !containsCyrillic(lim) {
+		t.Fatalf("limitation=%q", lim)
+	}
+	unknown := Limitation(b, "Some online model prose nobody translated")
+	if unknown != "Some online model prose nobody translated" {
+		t.Fatalf("unknown limitation must stay raw, got %q", unknown)
+	}
+}
+
 func containsCyrillic(s string) bool {
 	for _, r := range s {
 		if r >= 0x0400 && r <= 0x04FF {

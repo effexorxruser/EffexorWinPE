@@ -179,7 +179,13 @@ func renderOverview(b *i18n.Bundle, model viewmodel.AppModel) []string {
 		fmt.Sprintf("%s: %s", b.T("label.memory"), adapter.FormatBytes(o.MemoryBytes)),
 		fmt.Sprintf("%s: %s", b.T("label.hostname"), o.Hostname),
 		fmt.Sprintf("%s: %s", b.T("label.runtime"), o.Runtime),
-		fmt.Sprintf("%s: ok=%d warning=%d error=%d unknown=%d", b.T("label.checks"), o.CheckOK, o.CheckWarning, o.CheckError, o.CheckUnknown),
+		fmt.Sprintf("%s: %s=%d, %s=%d, %s=%d, %s=%d",
+			b.T("label.checks"),
+			b.T("label.checks_ok"), o.CheckOK,
+			b.T("label.checks_warning"), o.CheckWarning,
+			b.T("label.checks_error"), o.CheckError,
+			b.T("label.checks_unknown"), o.CheckUnknown,
+		),
 	}
 }
 
@@ -216,7 +222,13 @@ func renderSummary(b *i18n.Bundle, model viewmodel.AppModel) []string {
 		lines = append(lines, model.Summary.Headline, "")
 	}
 	for _, c := range model.Summary.Checks {
-		lines = append(lines, fmt.Sprintf("[%s] %s — %s", b.T(c.StatusKey), c.ID, c.Summary))
+		localized, technical := diagtext.CheckSummary(b, c.ID, c.Summary)
+		lines = append(lines, fmt.Sprintf("[%s] %s", b.T(c.StatusKey), localized))
+		tech := c.ID
+		if technical != "" && technical != localized {
+			tech = c.ID + " — " + technical
+		}
+		lines = append(lines, "  "+b.T("msg.technical_details")+": "+tech)
 	}
 	return lines
 }
@@ -330,7 +342,7 @@ func renderAgent(b *i18n.Bundle, model viewmodel.AppModel) []string {
 	headline := diagtext.Headline(b, a.Severity, a.Headline)
 	lines := []string{
 		fmt.Sprintf("%s: %s", b.T("label.results"), headline),
-		fmt.Sprintf("%s: %s", b.T("label.severity"), a.Severity),
+		fmt.Sprintf("%s: %s", b.T("label.severity"), diagtext.Severity(b, a.Severity)),
 		fmt.Sprintf("%s: %s", b.T("label.session_id"), a.SessionID),
 		"",
 		b.T("label.findings"),
@@ -338,17 +350,28 @@ func renderAgent(b *i18n.Bundle, model viewmodel.AppModel) []string {
 	for _, f := range a.Findings {
 		title := diagtext.FindingTitle(b, f.ID, f.Title)
 		rationale := diagtext.FindingRationale(b, f.ID, f.Rationale)
-		lines = append(lines, fmt.Sprintf("- [%s/%s] %s: %s", f.Severity, f.Confidence, title, rationale))
+		lines = append(lines, fmt.Sprintf("- [%s/%s] %s: %s",
+			diagtext.Severity(b, f.Severity),
+			diagtext.Confidence(b, f.Confidence),
+			title, rationale))
+		if f.Title != title || f.Rationale != rationale {
+			lines = append(lines, "  "+b.T("msg.technical_details")+": "+f.ID)
+		}
 	}
 	lines = append(lines, "", b.T("label.next_steps"))
 	for _, s := range a.NextSteps {
 		title := diagtext.StepTitle(b, s.ID, s.Title)
 		rationale := diagtext.StepRationale(b, s.ID, s.Rationale)
-		lines = append(lines, fmt.Sprintf("- %s (%s, %s) — %s", title, s.Operation, s.Risk, rationale))
+		lines = append(lines, fmt.Sprintf("- %s — %s (%s)", title, rationale, diagtext.Risk(b, s.Risk)))
+		if s.Operation != "" || s.ID != "" {
+			lines = append(lines, "  "+b.T("msg.technical_details")+": "+s.ID+" / "+s.Operation)
+		}
 	}
 	if len(a.Limitations) > 0 {
 		lines = append(lines, "", b.T("label.limitations"))
-		lines = append(lines, a.Limitations...)
+		for _, lim := range a.Limitations {
+			lines = append(lines, diagtext.Limitation(b, lim))
+		}
 	}
 	return lines
 }

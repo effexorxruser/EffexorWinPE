@@ -37,6 +37,7 @@ const (
 	ExitCorruptDiagnosis
 	ExitMissingSession
 	ExitCorruptSession
+	ExitStaleArtifact
 )
 
 // Result is the outcome of a diagnostics run.
@@ -84,6 +85,15 @@ type Orchestrator struct {
 	Paths   Paths
 	Runner  Runner
 	Journal *journal.Journal
+	// Now is an optional clock override for tests.
+	Now func() time.Time
+}
+
+func (o *Orchestrator) now() time.Time {
+	if o.Now != nil {
+		return o.Now()
+	}
+	return time.Now()
 }
 
 // DefaultPaths resolves standard WinPE / sidecar layout.
@@ -98,7 +108,6 @@ func DefaultPaths(baseDir string) Paths {
 	}
 	binDir := baseDir
 	root := filepath.Dir(baseDir)
-	// Prefer X:\EffexorWinPE layout when bin is .../bin
 	reportsDir := filepath.Join(root, "reports")
 	if filepath.Base(baseDir) != "bin" {
 		reportsDir = filepath.Join(baseDir, "reports")
@@ -144,6 +153,12 @@ func (o *Orchestrator) RunCollection(ctx context.Context, onProgress ProgressFun
 		o.log("reports dir: %v", err)
 		return Result{Code: ExitFailedStart, FriendlyKey: "msg.process_failed", Detail: err.Error()}
 	}
+	if err := o.clearRunArtifacts(); err != nil {
+		o.log("clear artifacts: %v", err)
+		return Result{Code: ExitFailedStart, FriendlyKey: "msg.process_failed", Detail: err.Error()}
+	}
+
+	runStarted := o.now()
 
 	notify(viewmodel.ProgressScreen{Phase: "collector", StatusKey: "status.running", Percent: 10, Detail: "msg.collection_running"})
 	var outBuf, errBuf bytes.Buffer
@@ -165,6 +180,10 @@ func (o *Orchestrator) RunCollection(ctx context.Context, onProgress ProgressFun
 		}
 	}
 
+	if err := fileFreshnessError(o.Paths.ReportPath, runStarted); err != nil {
+		o.log("stale report: %v", err)
+		return Result{Code: ExitStaleArtifact, FriendlyKey: "msg.stale_artifact", Detail: err.Error(), ReportPath: o.Paths.ReportPath}
+	}
 	reportBytes, err := os.ReadFile(o.Paths.ReportPath)
 	if err != nil {
 		return Result{Code: ExitCorruptReport, FriendlyKey: "msg.report_corrupt", Detail: err.Error(), ReportPath: o.Paths.ReportPath}
@@ -178,6 +197,9 @@ func (o *Orchestrator) RunCollection(ctx context.Context, onProgress ProgressFun
 			code = ExitUnsupportedSchema
 		}
 		return Result{Code: code, FriendlyKey: key, Detail: err.Error(), ReportPath: o.Paths.ReportPath}
+	}
+	if err := validateLoadedReport(report); err != nil {
+		return Result{Code: ExitCorruptReport, FriendlyKey: "msg.report_corrupt", Detail: err.Error(), ReportPath: o.Paths.ReportPath}
 	}
 
 	notify(viewmodel.ProgressScreen{Phase: "agent", StatusKey: "status.running", Percent: 60, Detail: "msg.agent_running"})
@@ -194,22 +216,20 @@ func (o *Orchestrator) RunCollection(ctx context.Context, onProgress ProgressFun
 	}, &outBuf, &errBuf)
 	stopPulse()
 	o.logProcess("agent", outBuf.String(), errBuf.String(), err)
+	model := adapter.FromReport(report, false)
 	if errors.Is(actx.Err(), context.DeadlineExceeded) {
-		model := adapter.FromReport(report, false)
 		return Result{
 			Code: ExitTimeout, FriendlyKey: "msg.process_hung", Detail: errBuf.String(),
 			Report: &report, Model: model, ReportPath: o.Paths.ReportPath,
 		}
 	}
 	if err != nil {
-		model := adapter.FromReport(report, false)
 		return Result{
 			Code: mapExecError(err), FriendlyKey: "msg.process_failed", Detail: err.Error() + "\n" + errBuf.String(),
 			Report: &report, Model: model, ReportPath: o.Paths.ReportPath,
 		}
 	}
 
-	model := adapter.FromReport(report, false)
 	result := Result{
 		Report:        &report,
 		Model:         model,
@@ -225,61 +245,74 @@ func (o *Orchestrator) RunCollection(ctx context.Context, onProgress ProgressFun
 		result.Model.Journal.Entries = o.Journal.Entries()
 	}
 
+	fail := func(code ExitCode, key, detail string) Result {
+		result.Code = code
+		result.FriendlyKey = key
+		result.Detail = detail
+		result.Model.Progress = viewmodel.ProgressScreen{
+			Phase: "failed", StatusKey: "status.failed", Percent: 100,
+			Detail: key, FriendlyError: key, ShowJournalHint: true,
+		}
+		notify(result.Model.Progress)
+		return result
+	}
+
+	if err := fileFreshnessError(o.Paths.DiagnosisPath, runStarted); err != nil {
+		if os.IsNotExist(err) {
+			o.log("diagnosis missing: %v", err)
+			return fail(ExitMissingDiagnosis, "msg.diagnosis_missing", err.Error())
+		}
+		o.log("stale diagnosis: %v", err)
+		return fail(ExitStaleArtifact, "msg.stale_artifact", err.Error())
+	}
 	diagBytes, err := os.ReadFile(o.Paths.DiagnosisPath)
 	if err != nil {
 		o.log("diagnosis missing: %v", err)
-		result.Code = ExitMissingDiagnosis
-		result.FriendlyKey = "msg.diagnosis_missing"
-		result.Detail = err.Error()
-		result.Model.Progress = viewmodel.ProgressScreen{
-			Phase: "failed", StatusKey: "status.failed", Percent: 100,
-			Detail: result.FriendlyKey, FriendlyError: result.FriendlyKey, ShowJournalHint: true,
-		}
-		notify(result.Model.Progress)
-		return result
+		return fail(ExitMissingDiagnosis, "msg.diagnosis_missing", err.Error())
 	}
 	var assessment diagnosis.Assessment
-	if err := decodeJSON(diagBytes, &assessment); err != nil {
+	if err := decodeStrictJSONObject(diagBytes, &assessment); err != nil {
 		o.log("diagnosis corrupt: %v", err)
-		result.Code = ExitCorruptDiagnosis
-		result.FriendlyKey = "msg.diagnosis_corrupt"
-		result.Detail = err.Error()
-		result.Model.Progress = viewmodel.ProgressScreen{
-			Phase: "failed", StatusKey: "status.failed", Percent: 100,
-			Detail: result.FriendlyKey, FriendlyError: result.FriendlyKey, ShowJournalHint: true,
+		return fail(ExitCorruptDiagnosis, "msg.diagnosis_corrupt", err.Error())
+	}
+	if err := validateAssessment(assessment, report.ReportID); err != nil {
+		o.log("diagnosis invalid: %v", err)
+		code := ExitCorruptDiagnosis
+		key := "msg.diagnosis_corrupt"
+		if strings.Contains(err.Error(), "unsupported diagnosis schema") {
+			key = "msg.schema_unsupported"
+			code = ExitUnsupportedSchema
 		}
-		notify(result.Model.Progress)
-		return result
+		return fail(code, key, err.Error())
 	}
 	result.Assessment = &assessment
 
+	if err := fileFreshnessError(o.Paths.SessionPath, runStarted); err != nil {
+		if os.IsNotExist(err) {
+			o.log("session missing: %v", err)
+			adapter.ApplyAssessment(&result.Model, assessment, nil)
+			return fail(ExitMissingSession, "msg.session_missing", err.Error())
+		}
+		o.log("stale session: %v", err)
+		adapter.ApplyAssessment(&result.Model, assessment, nil)
+		return fail(ExitStaleArtifact, "msg.stale_artifact", err.Error())
+	}
 	sessBytes, err := os.ReadFile(o.Paths.SessionPath)
 	if err != nil {
 		o.log("session missing: %v", err)
 		adapter.ApplyAssessment(&result.Model, assessment, nil)
-		result.Code = ExitMissingSession
-		result.FriendlyKey = "msg.session_missing"
-		result.Detail = err.Error()
-		result.Model.Progress = viewmodel.ProgressScreen{
-			Phase: "failed", StatusKey: "status.failed", Percent: 100,
-			Detail: result.FriendlyKey, FriendlyError: result.FriendlyKey, ShowJournalHint: true,
-		}
-		notify(result.Model.Progress)
-		return result
+		return fail(ExitMissingSession, "msg.session_missing", err.Error())
 	}
 	var sess session.Session
-	if err := decodeJSON(sessBytes, &sess); err != nil {
+	if err := decodeStrictJSONObject(sessBytes, &sess); err != nil {
 		o.log("session corrupt: %v", err)
 		adapter.ApplyAssessment(&result.Model, assessment, nil)
-		result.Code = ExitCorruptSession
-		result.FriendlyKey = "msg.session_corrupt"
-		result.Detail = err.Error()
-		result.Model.Progress = viewmodel.ProgressScreen{
-			Phase: "failed", StatusKey: "status.failed", Percent: 100,
-			Detail: result.FriendlyKey, FriendlyError: result.FriendlyKey, ShowJournalHint: true,
-		}
-		notify(result.Model.Progress)
-		return result
+		return fail(ExitCorruptSession, "msg.session_corrupt", err.Error())
+	}
+	if err := validateSession(sess, report.ReportID); err != nil {
+		o.log("session invalid: %v", err)
+		adapter.ApplyAssessment(&result.Model, assessment, nil)
+		return fail(ExitCorruptSession, "msg.session_corrupt", err.Error())
 	}
 	result.Session = &sess
 	adapter.ApplyAssessment(&result.Model, assessment, &sess)
@@ -342,18 +375,18 @@ func isUnsupportedSchema(err error) bool {
 	return strings.Contains(err.Error(), "unsupported diagnostic schema")
 }
 
-func decodeJSON(raw []byte, dest any) error {
-	return json.Unmarshal(raw, dest)
-}
-
 // pulseProgress emits intermediate progress while a subprocess runs.
+// The returned stop function waits until the progress goroutine exits.
 func pulseProgress(ctx context.Context, notify ProgressFunc, phase, detail string, from, to int) func() {
 	if notify == nil {
 		return func() {}
 	}
 	done := make(chan struct{})
 	var once sync.Once
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		ticker := time.NewTicker(400 * time.Millisecond)
 		defer ticker.Stop()
 		cur := from
@@ -375,5 +408,13 @@ func pulseProgress(ctx context.Context, notify ProgressFunc, phase, detail strin
 			}
 		}
 	}()
-	return func() { once.Do(func() { close(done) }) }
+	return func() {
+		once.Do(func() { close(done) })
+		wg.Wait()
+	}
+}
+
+// Kept for callers that still decode permissive JSON elsewhere.
+func decodeJSON(raw []byte, dest any) error {
+	return json.Unmarshal(raw, dest)
 }

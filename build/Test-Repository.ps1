@@ -22,6 +22,8 @@ try {
         throw "Go tests failed with exit code $LASTEXITCODE."
     }
 
+    & (Join-Path $PSScriptRoot "Test-Add-WinPELanguage.ps1")
+
     $PreviousGoOS = $env:GOOS
     $PreviousGoArch = $env:GOARCH
     $PreviousCgo = $env:CGO_ENABLED

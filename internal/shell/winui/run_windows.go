@@ -14,9 +14,11 @@ import (
 
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/export"
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/i18n"
+	"github.com/effexorxruser/EffexorWinPE/internal/shell/layout"
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/mock"
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/orchestrator"
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/present"
+	"github.com/effexorxruser/EffexorWinPE/internal/shell/uiqueue"
 	"github.com/effexorxruser/EffexorWinPE/internal/shell/viewmodel"
 )
 
@@ -37,19 +39,6 @@ var (
 	colorText  = rgb(232, 234, 237)
 	colorBtnBg = rgb(58, 64, 72)
 )
-
-type uiEventKind int
-
-const (
-	uiEventProgress uiEventKind = iota
-	uiEventDone
-)
-
-type uiEvent struct {
-	kind     uiEventKind
-	progress viewmodel.ProgressScreen
-	result   orchestrator.Result
-}
 
 type app struct {
 	cfg        Config
@@ -77,7 +66,8 @@ type app struct {
 	windowedY  int32
 	windowedW  int32
 	windowedH  int32
-	events     chan uiEvent
+	queue      *uiqueue.Queue
+	visibleBtn int
 }
 
 // Run starts the native Win32 message loop.
@@ -101,7 +91,7 @@ func Run(cfg Config) error {
 		current: present.ScreenOverview,
 		dpi:     96,
 		kiosk:   cfg.Kiosk,
-		events:  make(chan uiEvent, 32),
+		queue:   uiqueue.New(),
 	}
 	if a.model.MockMode || cfg.Mock {
 		a.model.MockMode = true
@@ -293,33 +283,33 @@ func (a *app) populateNav() {
 func (a *app) layout() {
 	var rc rect
 	procGetClientRect.Call(uintptr(a.hwnd), uintptr(unsafe.Pointer(&rc)))
-	w := rc.Right - rc.Left
-	h := rc.Bottom - rc.Top
-	scale := float64(a.dpi) / 96.0
-	if scale < 1 {
-		scale = 1
+	w := int(rc.Right - rc.Left)
+	h := int(rc.Bottom - rc.Top)
+	out := layout.Compute(layout.Input{
+		ClientW:   w,
+		ClientH:   h,
+		DPI:       int(a.dpi),
+		BtnCount:  a.visibleBtn,
+		ShowBrand: true,
+	})
+	move := func(hwnd windows.HWND, r layout.Rect) {
+		if hwnd == 0 {
+			return
+		}
+		procMoveWindow.Call(uintptr(hwnd), uintptr(r.X), uintptr(r.Y), uintptr(r.W), uintptr(r.H), 1)
 	}
-	pad := int32(16 * scale)
-	navW := int32(260 * scale)
-	brandH := int32(48 * scale)
-	btnH := int32(44 * scale)
-	btnW := int32(240 * scale)
-
-	procMoveWindow.Call(uintptr(a.brand), uintptr(pad), uintptr(pad), uintptr(navW), uintptr(brandH), 1)
-	procMoveWindow.Call(uintptr(a.nav), uintptr(pad), uintptr(pad+brandH+8), uintptr(navW), uintptr(h-pad*2-brandH-8), 1)
-
-	contentX := pad + navW + pad
-	contentW := w - contentX - pad
-	contentH := h - pad*3 - btnH - brandH
-	if contentH < int32(200*scale) {
-		contentH = h / 2
+	move(a.brand, out.Brand)
+	move(a.nav, out.Nav)
+	move(a.content, out.Content)
+	btns := []*windows.HWND{&a.btnPrimary, &a.btnSecond, &a.btnThird}
+	for i, b := range btns {
+		if i < len(out.Buttons) {
+			move(*b, out.Buttons[i])
+			procEnableWindow.Call(uintptr(*b), 1)
+		} else {
+			procMoveWindow.Call(uintptr(*b), 0, 0, 0, 0, 1)
+		}
 	}
-	procMoveWindow.Call(uintptr(a.content), uintptr(contentX), uintptr(pad+brandH+8), uintptr(contentW), uintptr(contentH), 1)
-
-	btnY := h - pad - btnH
-	procMoveWindow.Call(uintptr(a.btnPrimary), uintptr(contentX), uintptr(btnY), uintptr(btnW), uintptr(btnH), 1)
-	procMoveWindow.Call(uintptr(a.btnSecond), uintptr(contentX+btnW+12), uintptr(btnY), uintptr(btnW), uintptr(btnH), 1)
-	procMoveWindow.Call(uintptr(a.btnThird), uintptr(contentX+2*(btnW+12)), uintptr(btnY), uintptr(btnW), uintptr(btnH), 1)
 }
 
 func (a *app) onCommand(wParam uintptr) {
@@ -368,34 +358,41 @@ func (a *app) updateButtons(screen string) {
 	procEnableWindow.Call(uintptr(a.btnSecond), 0)
 	procEnableWindow.Call(uintptr(a.btnThird), 0)
 
-	enable := func(h windows.HWND, key string) {
-		setWindowText(h, a.bundle.T(key))
-		procEnableWindow.Call(uintptr(h), 1)
+	labels := make([]string, 0, 3)
+	enable := func(key string) {
+		labels = append(labels, a.bundle.T(key))
 	}
 
 	switch screen {
 	case present.ScreenDiagnostics, present.ScreenProgress:
-		enable(a.btnPrimary, "action.start_diagnostics")
-		enable(a.btnSecond, "action.open_journal")
+		enable("action.start_diagnostics")
+		enable("action.open_journal")
 	case present.ScreenExport:
-		enable(a.btnPrimary, "action.export_report")
-		enable(a.btnSecond, "action.select_folder")
+		enable("action.export_report")
+		enable("action.select_folder")
 	case present.ScreenJournal:
-		enable(a.btnPrimary, "action.open_journal")
+		enable("action.open_journal")
 	case present.ScreenTools:
-		enable(a.btnPrimary, "action.open_cmd")
+		enable("action.open_cmd")
 	case present.ScreenPower:
-		enable(a.btnPrimary, "action.reboot")
-		enable(a.btnSecond, "action.shutdown")
+		enable("action.reboot")
+		enable("action.shutdown")
 	case present.ScreenOverview, present.ScreenSummary:
-		enable(a.btnPrimary, "action.start_diagnostics")
-		enable(a.btnSecond, "action.export_report")
+		enable("action.start_diagnostics")
+		enable("action.export_report")
 		if a.kiosk {
-			enable(a.btnThird, "action.windowed")
+			enable("action.windowed")
 		} else {
-			enable(a.btnThird, "action.fullscreen")
+			enable("action.fullscreen")
 		}
 	}
+	btns := []windows.HWND{a.btnPrimary, a.btnSecond, a.btnThird}
+	for i, label := range labels {
+		setWindowText(btns[i], label)
+		procEnableWindow.Call(uintptr(btns[i]), 1)
+	}
+	a.visibleBtn = len(labels)
+	a.layout()
 }
 
 func (a *app) onPrimary() {
@@ -454,84 +451,65 @@ func (a *app) selectNav(screen string) {
 	}
 }
 
-func (a *app) queueEvent(ev uiEvent) {
-	select {
-	case a.events <- ev:
-	default:
-		// Drop oldest-style: best-effort non-blocking enqueue.
-		select {
-		case <-a.events:
-		default:
-		}
-		select {
-		case a.events <- ev:
-		default:
-		}
-	}
-	msg := uint32(msgUIRefresh)
-	switch ev.kind {
-	case uiEventProgress:
-		msg = msgUIProgress
-	case uiEventDone:
-		msg = msgUIDone
-	}
-	postMessage(a.hwnd, msg, 0, 0)
+func (a *app) queueProgress(p viewmodel.ProgressScreen) {
+	a.queue.PushProgress(p)
+	postMessage(a.hwnd, msgUIProgress, 0, 0)
+}
+
+func (a *app) queueDone(res orchestrator.Result) {
+	a.queue.PushTerminal(res)
+	postMessage(a.hwnd, msgUIDone, 0, 0)
 }
 
 func (a *app) drainUIEvents() {
-	for {
-		select {
-		case ev := <-a.events:
-			switch ev.kind {
-			case uiEventProgress:
-				a.mu.Lock()
-				a.model.Progress = ev.progress
-				a.mu.Unlock()
-				if a.current != present.ScreenProgress {
-					a.current = present.ScreenProgress
-					a.selectNav(present.ScreenProgress)
-				}
-				a.refreshContent()
-			case uiEventDone:
-				a.mu.Lock()
-				a.running = false
-				res := ev.result
-				if res.Code == orchestrator.ExitOK {
-					a.model = res.Model
-					a.model.Progress = viewmodel.ProgressScreen{Phase: "done", StatusKey: "status.succeeded", Percent: 100, Detail: "msg.collection_done"}
-				} else {
-					a.model.Progress = viewmodel.ProgressScreen{
-						Phase: "failed", StatusKey: "status.failed", Percent: 100,
-						Detail: res.FriendlyKey, FriendlyError: res.FriendlyKey, ShowJournalHint: true,
-					}
-					if res.Report != nil {
-						a.model.Overview = res.Model.Overview
-						a.model.Summary = res.Model.Summary
-						a.model.Hardware = res.Model.Hardware
-						a.model.Storage = res.Model.Storage
-						a.model.BitLocker = res.Model.BitLocker
-						a.model.Windows = res.Model.Windows
-						a.model.Network = res.Model.Network
-						a.model.Agent = res.Model.Agent
-						a.model.Export = res.Model.Export
-					}
-					if a.cfg.Journal != nil {
-						a.model.Journal.Entries = a.cfg.Journal.Entries()
-					}
-				}
-				a.mu.Unlock()
-				a.refreshContent()
-				if res.Code != orchestrator.ExitOK {
-					messageBox(a.hwnd, a.bundle.T(res.FriendlyKey)+"\n"+a.bundle.T("msg.see_journal"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
-				} else {
-					a.current = present.ScreenSummary
-					a.selectNav(present.ScreenSummary)
-					a.refreshContent()
-				}
-			}
-		default:
-			return
+	progress, terminal := a.queue.Drain()
+	if progress != nil {
+		a.mu.Lock()
+		a.model.Progress = *progress
+		a.mu.Unlock()
+		if a.current != present.ScreenProgress {
+			a.current = present.ScreenProgress
+			a.selectNav(present.ScreenProgress)
 		}
+		a.refreshContent()
+	}
+	if terminal == nil {
+		return
+	}
+	a.mu.Lock()
+	a.running = false
+	res := *terminal
+	if res.Code == orchestrator.ExitOK {
+		a.model = res.Model
+		a.model.Progress = viewmodel.ProgressScreen{Phase: "done", StatusKey: "status.succeeded", Percent: 100, Detail: "msg.collection_done"}
+	} else {
+		a.model.Progress = viewmodel.ProgressScreen{
+			Phase: "failed", StatusKey: "status.failed", Percent: 100,
+			Detail: res.FriendlyKey, FriendlyError: res.FriendlyKey, ShowJournalHint: true,
+		}
+		if res.Report != nil {
+			a.model.Overview = res.Model.Overview
+			a.model.Summary = res.Model.Summary
+			a.model.Hardware = res.Model.Hardware
+			a.model.Storage = res.Model.Storage
+			a.model.BitLocker = res.Model.BitLocker
+			a.model.Windows = res.Model.Windows
+			a.model.Network = res.Model.Network
+			a.model.Agent = res.Model.Agent
+			a.model.Export = res.Model.Export
+		}
+		if a.cfg.Journal != nil {
+			a.model.Journal.Entries = a.cfg.Journal.Entries()
+		}
+	}
+	a.mu.Unlock()
+	a.refreshContent()
+	if res.Code != orchestrator.ExitOK {
+		messageBox(a.hwnd, a.bundle.T(res.FriendlyKey)+"\n"+a.bundle.T("msg.see_journal"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
+	} else {
+		a.current = present.ScreenSummary
+		a.selectNav(present.ScreenSummary)
+		a.refreshContent()
 	}
 }
 
@@ -562,15 +540,15 @@ func (a *app) startDiagnostics() {
 
 	a.current = present.ScreenProgress
 	a.selectNav(present.ScreenProgress)
-	a.queueEvent(uiEvent{kind: uiEventProgress, progress: viewmodel.ProgressScreen{
+	a.queueProgress(viewmodel.ProgressScreen{
 		Phase: "collector", StatusKey: "status.running", Percent: 5, Detail: "msg.collection_running",
-	}})
+	})
 
 	go func() {
 		res := a.cfg.Orchestrator.RunCollection(context.Background(), func(p viewmodel.ProgressScreen) {
-			a.queueEvent(uiEvent{kind: uiEventProgress, progress: p})
+			a.queueProgress(p)
 		})
-		a.queueEvent(uiEvent{kind: uiEventDone, result: res})
+		a.queueDone(res)
 	}()
 }
 
@@ -579,26 +557,47 @@ func (a *app) pickExportDir() string {
 	if dir != "" {
 		return dir
 	}
-	// WinPE fallback: choose among removable/fixed drives without SHBrowseForFolder.
-	drives := logicalDrives()
-	var candidates []string
-	for _, d := range drives {
-		t := driveType(d)
-		if t == driveRemovable || t == driveFixed {
-			candidates = append(candidates, d)
-		}
+	a.mu.Lock()
+	var installRoots []string
+	for _, inst := range a.model.Windows.Installs {
+		installRoots = append(installRoots, inst.Root)
 	}
-	if len(candidates) == 0 {
+	a.mu.Unlock()
+	policy := export.ExportPolicy{ExcludeRoots: export.DefaultExcludeRoots(installRoots)}
+	removable, fixed, err := export.CandidateDrives(export.OSDriveScanner{}, policy)
+	if err != nil {
 		messageBox(a.hwnd, a.bundle.T("msg.export_usb_failed"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
 		return ""
 	}
-	for _, d := range candidates {
-		msg := a.bundle.T("msg.export_pick_drive") + "\n" + d + "EffexorWinPE-reports"
-		if messageBox(a.hwnd, msg, a.bundle.T("app.brand"), mbYesNo|mbIconWarn) == idYes {
-			return filepath.Join(d, "EffexorWinPE-reports")
+	choose := func(list []export.DriveInfo, requireConfirm bool) string {
+		for _, d := range list {
+			msg := a.bundle.T("msg.export_pick_drive") + "\n" + export.FormatDrive(d) + "\n" + export.ExportDirForDrive(d.Root)
+			if requireConfirm {
+				msg = a.bundle.T("msg.export_fixed_confirm") + "\n" + export.FormatDrive(d)
+			}
+			if messageBox(a.hwnd, msg, a.bundle.T("app.brand"), mbYesNo|mbIconWarn) == idYes {
+				if requireConfirm {
+					// Second explicit confirmation for fixed/internal disks.
+					if messageBox(a.hwnd, a.bundle.T("msg.export_fixed_confirm"), a.bundle.T("app.brand"), mbOKCancel|mbIconWarn) != idOK {
+						continue
+					}
+				}
+				return export.ExportDirForDrive(d.Root)
+			}
 		}
+		return ""
 	}
-	return ""
+	if dir := choose(removable, false); dir != "" {
+		return dir
+	}
+	if len(fixed) == 0 {
+		messageBox(a.hwnd, a.bundle.T("msg.export_usb_failed"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
+		return ""
+	}
+	if messageBox(a.hwnd, a.bundle.T("msg.export_no_removable"), a.bundle.T("app.brand"), mbYesNo|mbIconWarn) != idYes {
+		return ""
+	}
+	return choose(fixed, true)
 }
 
 func (a *app) doExport() {
