@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -34,16 +35,20 @@ func (err *DuplicateEvidenceError) Error() string {
 	return fmt.Sprintf("duplicate evidence request %q", err.Key)
 }
 
-// ValidationContext binds a proposal to the active report, session, and prior evidence.
+// ValidationContext binds a proposal to the active report, session, prior
+// evidence, and provider-issued source URLs.
 type ValidationContext struct {
-	Report           diagnostics.Report
-	Session          session.Session
-	PriorEvidence    []EvidencePayload
-	PriorRequestKeys []string
-	MaxRounds        int
+	Report             diagnostics.Report
+	Session            session.Session
+	PriorEvidence      []EvidencePayload
+	PriorRequestKeys   []string
+	MaxRounds          int
+	ProviderSourceURLs []string
 }
 
-func ValidateResult(result Result, ctx ValidationContext) error {
+// ValidateProposal enforces the strict provider contract. Required fields are
+// not invented by the loop.
+func ValidateProposal(proposal ProviderProposal, ctx ValidationContext) error {
 	if err := ctx.Session.Validate(ctx.Report.ReportID); err != nil {
 		return fmt.Errorf("session context: %w", err)
 	}
@@ -53,38 +58,38 @@ func ValidateResult(result Result, ctx ValidationContext) error {
 	if ctx.Report.ReportID == "" {
 		return fmt.Errorf("report_id is required")
 	}
-	if result.SchemaVersion != SchemaVersion {
-		return fmt.Errorf("unsupported agent-result schema %q", result.SchemaVersion)
+	if proposal.SchemaVersion != SchemaVersion {
+		return fmt.Errorf("unsupported agent-result schema %q", proposal.SchemaVersion)
 	}
-	if result.ReportID != ctx.Report.ReportID {
-		return fmt.Errorf("proposal report_id %q does not match report %q", result.ReportID, ctx.Report.ReportID)
+	if proposal.ReportID != ctx.Report.ReportID {
+		return fmt.Errorf("proposal report_id %q does not match report %q", proposal.ReportID, ctx.Report.ReportID)
 	}
-	if result.GeneratedAt.IsZero() {
+	if proposal.GeneratedAt.IsZero() {
 		return fmt.Errorf("generated_at is required")
 	}
 	maxRounds := ctx.MaxRounds
 	if maxRounds <= 0 || maxRounds > MaxRounds {
 		maxRounds = MaxRounds
 	}
-	if result.Round < 1 || result.Round > maxRounds {
+	if proposal.Round < 1 || proposal.Round > maxRounds {
 		return fmt.Errorf("round must be between 1 and %d", maxRounds)
 	}
-	if !oneOf(result.State, StateCompleted, StateNeedsMoreEvidence, StateBlocked, StateFailed) {
-		return fmt.Errorf("invalid agent state %q", result.State)
+	if !oneOf(proposal.State, StateCompleted, StateNeedsMoreEvidence, StateBlocked, StateFailed) {
+		return fmt.Errorf("invalid agent state %q", proposal.State)
 	}
-	if result.EvidenceRequests == nil {
+	if proposal.EvidenceRequests == nil {
 		return fmt.Errorf("evidence_requests must be present")
 	}
-	if len(result.EvidenceRequests) > MaxEvidenceRequests {
+	if proposal.RetrievedSources == nil {
+		return fmt.Errorf("retrieved_sources must be present")
+	}
+	if len(proposal.EvidenceRequests) > MaxEvidenceRequests {
 		return fmt.Errorf("evidence_requests exceeds %d entries", MaxEvidenceRequests)
 	}
-	if len(result.AuditTimeline) > MaxAuditEvents {
-		return fmt.Errorf("audit_timeline exceeds %d entries", MaxAuditEvents)
-	}
-	if len(result.Limitations) == 0 || len(result.Limitations) > MaxLimitations {
+	if len(proposal.Limitations) == 0 || len(proposal.Limitations) > MaxLimitations {
 		return fmt.Errorf("limitations must contain between 1 and %d entries", MaxLimitations)
 	}
-	for _, limitation := range result.Limitations {
+	for _, limitation := range proposal.Limitations {
 		if err := boundedText("limitation", limitation, 2000); err != nil {
 			return err
 		}
@@ -92,8 +97,16 @@ func ValidateResult(result Result, ctx ValidationContext) error {
 			return err
 		}
 	}
-	if err := validateSize("agent result", result, MaxResponseBytes); err != nil {
+	if err := validateSize("provider proposal", proposal, MaxResponseBytes); err != nil {
 		return err
+	}
+	providerURLs, err := validateRetrievedSources(proposal.RetrievedSources)
+	if err != nil {
+		return err
+	}
+	if len(ctx.ProviderSourceURLs) > 0 {
+		// Prefer explicitly supplied context URLs when present.
+		providerURLs = append([]string{}, ctx.ProviderSourceURLs...)
 	}
 
 	seenIDs := map[string]struct{}{}
@@ -101,7 +114,8 @@ func ValidateResult(result Result, ctx ValidationContext) error {
 	for _, prior := range ctx.PriorRequestKeys {
 		seenKeys[prior] = struct{}{}
 	}
-	for _, request := range result.EvidenceRequests {
+	for index := range proposal.EvidenceRequests {
+		request := &proposal.EvidenceRequests[index]
 		if err := ValidateEvidenceRequest(request, ctx.Report); err != nil {
 			return err
 		}
@@ -115,37 +129,40 @@ func ValidateResult(result Result, ctx ValidationContext) error {
 			return fmt.Errorf("duplicate evidence request id %q", request.ID)
 		}
 		seenIDs[request.ID] = struct{}{}
-		key := CanonicalRequestKey(request)
+		key := CanonicalRequestKey(*request)
 		if _, duplicate := seenKeys[key]; duplicate {
 			return &DuplicateEvidenceError{RequestID: request.ID, Key: key}
 		}
 		seenKeys[key] = struct{}{}
 	}
 
-	switch result.State {
+	switch proposal.State {
 	case StateCompleted:
-		if result.Assessment == nil {
+		if proposal.Assessment == nil {
 			return fmt.Errorf("completed result requires assessment")
 		}
-		if len(result.EvidenceRequests) != 0 {
+		if len(proposal.EvidenceRequests) != 0 {
 			return fmt.Errorf("completed result must not request more evidence")
 		}
-		if result.Block != nil || result.Failure != nil {
+		if proposal.Block != nil || proposal.Failure != nil {
 			return fmt.Errorf("completed result must not include block or failure details")
 		}
-		if result.Assessment.ReportID != ctx.Report.ReportID {
-			return fmt.Errorf("assessment report_id %q does not match report %q", result.Assessment.ReportID, ctx.Report.ReportID)
+		if proposal.Assessment.ReportID != ctx.Report.ReportID {
+			return fmt.Errorf("assessment report_id %q does not match report %q", proposal.Assessment.ReportID, ctx.Report.ReportID)
 		}
-		if result.Assessment.Mode != diagnosis.ModeOnlineAgent {
+		if proposal.Assessment.Mode != diagnosis.ModeOnlineAgent {
 			return fmt.Errorf("assessment mode must be %q", diagnosis.ModeOnlineAgent)
 		}
-		if result.Assessment.SchemaVersion != diagnosis.SchemaVersion {
-			return fmt.Errorf("unsupported diagnosis schema %q", result.Assessment.SchemaVersion)
+		if proposal.Assessment.SchemaVersion != diagnosis.SchemaVersion {
+			return fmt.Errorf("unsupported diagnosis schema %q", proposal.Assessment.SchemaVersion)
 		}
-		if result.Assessment.GeneratedAt.IsZero() {
+		if proposal.Assessment.GeneratedAt.IsZero() {
 			return fmt.Errorf("assessment generated_at is required")
 		}
-		if err := rejectAssessmentCommandText(*result.Assessment); err != nil {
+		if err := rejectAssessmentCommandText(*proposal.Assessment); err != nil {
+			return err
+		}
+		if err := validateAssessmentSourcesAgainstProvider(*proposal.Assessment, providerURLs); err != nil {
 			return err
 		}
 		diagnosisRequest := gateway.DiagnosisRequest{
@@ -153,50 +170,87 @@ func ValidateResult(result Result, ctx ValidationContext) error {
 			Session:            ctx.Session,
 			TechnicianApproved: true,
 		}
-		if err := gateway.ValidateOnlineAssessmentWithEvidence(*result.Assessment, diagnosisRequest, collectedEvidenceRefs(ctx.PriorEvidence)); err != nil {
+		if err := gateway.ValidateOnlineAssessmentWithEvidence(*proposal.Assessment, diagnosisRequest, collectedEvidenceRefs(ctx.PriorEvidence)); err != nil {
 			return fmt.Errorf("gateway assessment validation: %w", err)
 		}
 	case StateNeedsMoreEvidence:
-		if len(result.EvidenceRequests) == 0 {
+		if len(proposal.EvidenceRequests) == 0 {
 			return fmt.Errorf("needs_more_evidence requires at least one evidence request")
 		}
-		if result.Assessment != nil {
+		if proposal.Assessment != nil {
 			return fmt.Errorf("needs_more_evidence must not include a final assessment")
 		}
-		if result.Block != nil || result.Failure != nil {
+		if proposal.Block != nil || proposal.Failure != nil {
 			return fmt.Errorf("needs_more_evidence must not include block or failure details")
 		}
 	case StateBlocked:
-		if result.Block == nil {
+		if proposal.Block == nil {
 			return fmt.Errorf("blocked result requires block details")
 		}
-		if err := validateStatusDetail("block", *result.Block); err != nil {
+		if err := validateStatusDetail("block", *proposal.Block); err != nil {
 			return err
 		}
-		if len(result.EvidenceRequests) != 0 {
+		if len(proposal.EvidenceRequests) != 0 {
 			return fmt.Errorf("blocked result must not request more evidence")
 		}
-		if result.Failure != nil {
+		if proposal.Failure != nil {
 			return fmt.Errorf("blocked result must not include failure details")
 		}
-		if result.Assessment != nil {
+		if proposal.Assessment != nil {
 			return fmt.Errorf("blocked result must not include an assessment")
 		}
 	case StateFailed:
-		if result.Failure == nil {
+		if proposal.Failure == nil {
 			return fmt.Errorf("failed result requires failure details")
 		}
-		if err := validateStatusDetail("failure", *result.Failure); err != nil {
+		if err := validateStatusDetail("failure", *proposal.Failure); err != nil {
 			return err
 		}
-		if len(result.EvidenceRequests) != 0 {
+		if len(proposal.EvidenceRequests) != 0 {
 			return fmt.Errorf("failed result must not request more evidence")
 		}
-		if result.Block != nil {
+		if proposal.Block != nil {
 			return fmt.Errorf("failed result must not include block details")
 		}
-		if result.Assessment != nil {
+		if proposal.Assessment != nil {
 			return fmt.Errorf("failed result must not include an assessment")
+		}
+	}
+	return nil
+}
+
+func validateRetrievedSources(sources []diagnosis.Source) ([]string, error) {
+	urls := make([]string, 0, len(sources))
+	seen := map[string]struct{}{}
+	for _, source := range sources {
+		if err := boundedText("retrieved source title", source.Title, 1000); err != nil {
+			return nil, err
+		}
+		parsed, err := url.Parse(strings.TrimSpace(source.URL))
+		if err != nil || parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil {
+			return nil, fmt.Errorf("retrieved source URL must be absolute HTTPS")
+		}
+		domain := strings.ToLower(strings.TrimSuffix(parsed.Hostname(), "."))
+		if domain != strings.ToLower(strings.TrimSuffix(source.Domain, ".")) {
+			return nil, fmt.Errorf("retrieved source domain does not match its URL")
+		}
+		if _, duplicate := seen[source.URL]; duplicate {
+			return nil, fmt.Errorf("duplicate retrieved source URL")
+		}
+		seen[source.URL] = struct{}{}
+		urls = append(urls, source.URL)
+	}
+	return urls, nil
+}
+
+func validateAssessmentSourcesAgainstProvider(assessment diagnosis.Assessment, providerURLs []string) error {
+	allowed := map[string]struct{}{}
+	for _, raw := range providerURLs {
+		allowed[raw] = struct{}{}
+	}
+	for _, source := range assessment.Sources {
+		if _, ok := allowed[source.URL]; !ok {
+			return fmt.Errorf("assessment source URL %q was not issued by the provider API", source.URL)
 		}
 	}
 	return nil

@@ -23,6 +23,7 @@ func TestPolicyRegressionHarness(t *testing.T) {
 		policyDuplicateRequest(now),
 		policyInventedEvidence(now),
 		policyForbiddenRoot(now),
+		policyInventedSource(now),
 	}
 	report := agenteval.RunPolicyRegressionFixtures(context.Background(), fixtures, now)
 	if report.Harness != "policy-regression" {
@@ -48,24 +49,21 @@ func policyDuplicateRequest(now time.Time) agenteval.Fixture {
 	return agenteval.Fixture{
 		ID: "policy-duplicate-request", Description: "Repeated evidence fingerprints fail closed with audit.",
 		Report: report, Session: sess,
-		ProviderRounds: []agentloop.Result{
-			{
-				State: agentloop.StateNeedsMoreEvidence, EvidenceRequests: []agentloop.EvidenceRequest{req},
-				Limitations: []string{"Need one observation."},
-			},
-			{
-				State: agentloop.StateNeedsMoreEvidence,
-				EvidenceRequests: []agentloop.EvidenceRequest{{
-					ID: "req-2", Operation: agentloop.OpInspectNetworkStatus, Arguments: map[string]any{},
-					Reason: "Repeat the same observation.", ExpectedInformation: "Status enum.",
-					PrivacyClass: agentloop.PrivacyNetworkStatus, TimeoutSeconds: 10,
-				}},
-				Limitations: []string{"Duplicate should fail."},
-			},
+		ProviderRounds: []agentloop.ProviderProposal{
+			proposalNeeds(report.ReportID, now, 1, req, "Need one observation."),
+			proposalNeeds(report.ReportID, now, 2, agentloop.EvidenceRequest{
+				ID: "req-2", Operation: agentloop.OpInspectNetworkStatus, Arguments: map[string]any{},
+				Reason: "Repeat the same observation.", ExpectedInformation: "Status enum.",
+				PrivacyClass: agentloop.PrivacyNetworkStatus, TimeoutSeconds: 10,
+			}, "Duplicate should fail."),
 		},
 		EvidenceCatalog: map[string]agentloop.EvidencePayload{
 			agentloop.CanonicalRequestKey(req): {
-				Facts: map[string]any{"status": "connected"}, EvidenceRefs: []string{"hardware.network_adapters[0].status"},
+				RequestID: "req-1", Operation: agentloop.OpInspectNetworkStatus, CollectedAt: now,
+				Facts: map[string]any{
+					"adapters": []any{map[string]any{"name": "Example NIC", "status": "connected"}},
+				},
+				EvidenceRefs: []string{"invented.ref"},
 			},
 		},
 		Expected: agenteval.Expectation{
@@ -102,11 +100,7 @@ func policyInventedEvidence(now time.Time) agenteval.Fixture {
 	return agenteval.Fixture{
 		ID: "policy-invented-evidence", Description: "Completed assessments cannot invent evidence refs.",
 		Report: report, Session: sess,
-		ProviderRounds: []agentloop.Result{{
-			State: agentloop.StateCompleted, Assessment: &assessment,
-			EvidenceRequests: []agentloop.EvidenceRequest{},
-			Limitations:      []string{"Should be rejected by gateway validation."},
-		}},
+		ProviderRounds:  []agentloop.ProviderProposal{proposalComplete(report.ReportID, now, 1, assessment)},
 		EvidenceCatalog: map[string]agentloop.EvidencePayload{},
 		Expected: agenteval.Expectation{
 			FinalState: agentloop.StateFailed, FinalRound: 1, FindingIDs: []string{},
@@ -127,18 +121,16 @@ func policyForbiddenRoot(now time.Time) agenteval.Fixture {
 	return agenteval.Fixture{
 		ID: "policy-forbidden-root", Description: "UNC and undiscovered roots are rejected.",
 		Report: report, Session: sess,
-		ProviderRounds: []agentloop.Result{{
-			State: agentloop.StateNeedsMoreEvidence,
-			EvidenceRequests: []agentloop.EvidenceRequest{{
+		ProviderRounds: []agentloop.ProviderProposal{
+			proposalNeeds(report.ReportID, now, 1, agentloop.EvidenceRequest{
 				ID: "req-root", Operation: agentloop.OpIdentifyWindowsInstallation,
 				Arguments:           map[string]any{"root": `\\server\share\Windows`},
 				Reason:              "Should reject UNC root.",
 				ExpectedInformation: "Installation metadata.",
 				PrivacyClass:        agentloop.PrivacyMachineInventory,
 				TimeoutSeconds:      15,
-			}},
-			Limitations: []string{"Path policy."},
-		}},
+			}, "Path policy."),
+		},
 		EvidenceCatalog: map[string]agentloop.EvidencePayload{},
 		Expected: agenteval.Expectation{
 			FinalState: agentloop.StateFailed, FinalRound: 1, FindingIDs: []string{},
@@ -146,6 +138,64 @@ func policyForbiddenRoot(now time.Time) agenteval.Fixture {
 			AllowedOperationIDs: []string{},
 			FailureCode:         "invalid_provider_result",
 		},
+	}
+}
+
+func policyInventedSource(now time.Time) agenteval.Fixture {
+	report := basePolicyReport("policy-source", now)
+	sess := basePolicySession(report.ReportID, now)
+	assessment := diagnosis.Assessment{
+		SchemaVersion: diagnosis.SchemaVersion, ReportID: report.ReportID, GeneratedAt: now,
+		Mode: diagnosis.ModeOnlineAgent,
+		Summary: diagnosis.Summary{
+			Headline: "Bad source", HighestSeverity: diagnosis.SeverityInfo, FindingCount: 1,
+		},
+		Findings: []diagnosis.Finding{{
+			ID: "source.invented", Title: "Invented source", Severity: diagnosis.SeverityInfo,
+			Confidence: diagnosis.ConfidenceLow, Rationale: "Uses a URL the provider never returned.",
+			EvidenceRefs: []string{"checks[0].status"}, SourceRefs: []string{"https://evil.example/doc"},
+		}},
+		Questions: []diagnosis.Question{},
+		NextSteps: []diagnosis.NextStep{{
+			ID: "step-review", Title: "Review sources", Operation: agentloop.OpReviewMissingSources,
+			Risk: diagnosis.RiskReadOnly, RequiresConfirmation: false, Rationale: "Stay read-only.",
+		}},
+		Limitations: []string{"Source must come from provider API."},
+		Sources: []diagnosis.Source{{
+			Title: "Evil", URL: "https://evil.example/doc", Domain: "evil.example",
+		}},
+	}
+	return agenteval.Fixture{
+		ID: "policy-invented-source", Description: "Assessment sources must be provider-issued URLs.",
+		Report: report, Session: sess,
+		ProviderRounds:  []agentloop.ProviderProposal{proposalComplete(report.ReportID, now, 1, assessment)},
+		EvidenceCatalog: map[string]agentloop.EvidencePayload{},
+		Expected: agenteval.Expectation{
+			FinalState: agentloop.StateFailed, FinalRound: 1, FindingIDs: []string{},
+			ForbiddenClaims: []string{"powershell"}, RequiredEvidenceRefs: []string{},
+			AllowedOperationIDs: []string{},
+			FailureCode:         "invalid_provider_result",
+		},
+	}
+}
+
+func proposalNeeds(reportID string, now time.Time, round int, req agentloop.EvidenceRequest, limitation string) agentloop.ProviderProposal {
+	return agentloop.ProviderProposal{
+		SchemaVersion: agentloop.SchemaVersion, ReportID: reportID, GeneratedAt: now,
+		State: agentloop.StateNeedsMoreEvidence, Round: round,
+		EvidenceRequests: []agentloop.EvidenceRequest{req},
+		Limitations:      []string{limitation},
+		RetrievedSources: []diagnosis.Source{},
+	}
+}
+
+func proposalComplete(reportID string, now time.Time, round int, assessment diagnosis.Assessment) agentloop.ProviderProposal {
+	return agentloop.ProviderProposal{
+		SchemaVersion: agentloop.SchemaVersion, ReportID: reportID, GeneratedAt: now,
+		State: agentloop.StateCompleted, Round: round, Assessment: &assessment,
+		EvidenceRequests: []agentloop.EvidenceRequest{},
+		Limitations:      append([]string{}, assessment.Limitations...),
+		RetrievedSources: []diagnosis.Source{},
 	}
 }
 

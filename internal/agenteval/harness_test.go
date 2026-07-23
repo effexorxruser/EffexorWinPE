@@ -10,6 +10,7 @@ import (
 
 	"github.com/effexorxruser/EffexorWinPE/internal/agenteval"
 	"github.com/effexorxruser/EffexorWinPE/internal/agentloop"
+	"github.com/effexorxruser/EffexorWinPE/internal/diagnosis"
 )
 
 func TestEvalFixtures(t *testing.T) {
@@ -79,10 +80,16 @@ func TestEvalFixtures(t *testing.T) {
 }
 
 func TestMockProviderIsDeterministic(t *testing.T) {
-	provider := agenteval.NewMockProvider([]agentloop.Result{{
-		State:       agentloop.StateFailed,
-		Failure:     &agentloop.StatusDetail{Code: "scripted", Message: "deterministic failure"},
-		Limitations: []string{"fixture"},
+	provider := agenteval.NewMockProvider([]agentloop.ProviderProposal{{
+		SchemaVersion:    agentloop.SchemaVersion,
+		ReportID:         "report-mock",
+		GeneratedAt:      time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC),
+		State:            agentloop.StateFailed,
+		Round:            1,
+		Failure:          &agentloop.StatusDetail{Code: "scripted", Message: "deterministic failure"},
+		EvidenceRequests: []agentloop.EvidenceRequest{},
+		Limitations:      []string{"fixture"},
+		RetrievedSources: []diagnosis.Source{},
 	}})
 	first, err := provider.Propose(context.Background(), agentloop.RoundInput{Round: 1})
 	if err != nil {

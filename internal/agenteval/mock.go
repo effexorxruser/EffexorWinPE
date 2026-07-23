@@ -6,38 +6,48 @@ import (
 	"time"
 
 	"github.com/effexorxruser/EffexorWinPE/internal/agentloop"
+	"github.com/effexorxruser/EffexorWinPE/internal/diagnosis"
 )
 
-// MockProvider returns predetermined round results without calling a model API.
+// MockProvider returns predetermined round proposals without calling a model API.
 type MockProvider struct {
-	rounds    []agentloop.Result
+	rounds    []agentloop.ProviderProposal
 	index     int
 	requested []string
+	lastInput agentloop.RoundInput
 }
 
-func NewMockProvider(rounds []agentloop.Result) *MockProvider {
-	copied := make([]agentloop.Result, len(rounds))
+func NewMockProvider(rounds []agentloop.ProviderProposal) *MockProvider {
+	copied := make([]agentloop.ProviderProposal, len(rounds))
 	copy(copied, rounds)
 	return &MockProvider{rounds: copied}
 }
 
-func (provider *MockProvider) Propose(_ context.Context, input agentloop.RoundInput) (agentloop.Result, error) {
+func (provider *MockProvider) Propose(_ context.Context, input agentloop.RoundInput) (agentloop.ProviderProposal, error) {
+	provider.lastInput = input
 	if provider.index >= len(provider.rounds) {
-		return agentloop.Result{}, fmt.Errorf("mock provider has no scripted round %d", input.Round)
+		return agentloop.ProviderProposal{}, fmt.Errorf("mock provider has no scripted round %d", input.Round)
 	}
-	result := provider.rounds[provider.index]
+	proposal := provider.rounds[provider.index]
 	provider.index++
-	if result.EvidenceRequests == nil {
-		result.EvidenceRequests = []agentloop.EvidenceRequest{}
+	if proposal.EvidenceRequests == nil {
+		return agentloop.ProviderProposal{}, fmt.Errorf("scripted proposal missing evidence_requests")
 	}
-	for _, request := range result.EvidenceRequests {
+	if proposal.RetrievedSources == nil {
+		proposal.RetrievedSources = []diagnosis.Source{}
+	}
+	for _, request := range proposal.EvidenceRequests {
 		provider.requested = append(provider.requested, request.Operation)
 	}
-	return result, nil
+	return proposal, nil
 }
 
 func (provider *MockProvider) RequestedOperations() []string {
 	return append([]string(nil), provider.requested...)
+}
+
+func (provider *MockProvider) LastInput() agentloop.RoundInput {
+	return provider.lastInput
 }
 
 // CatalogCollector returns fixture-supplied evidence for allowlisted operations.
@@ -63,20 +73,8 @@ func (collector CatalogCollector) Collect(_ context.Context, request agentloop.E
 	if !ok {
 		return agentloop.EvidencePayload{}, fmt.Errorf("no fixture evidence for %q", key)
 	}
-	if payload.RequestID == "" {
-		payload.RequestID = request.ID
-	}
-	if payload.Operation == "" {
-		payload.Operation = request.Operation
-	}
-	if payload.CollectedAt.IsZero() {
-		payload.CollectedAt = collector.now.UTC()
-	}
-	if payload.Facts == nil {
-		payload.Facts = map[string]any{}
-	}
-	if payload.EvidenceRefs == nil {
-		payload.EvidenceRefs = []string{}
+	if payload.RequestID == "" || payload.Operation == "" || payload.CollectedAt.IsZero() || payload.Facts == nil {
+		return agentloop.EvidencePayload{}, fmt.Errorf("fixture evidence payload for %q is incomplete", key)
 	}
 	return payload, nil
 }

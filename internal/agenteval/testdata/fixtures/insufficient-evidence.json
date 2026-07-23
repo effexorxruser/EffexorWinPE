@@ -11,7 +11,8 @@
     },
     "environment": {
       "runtime_os": "windows",
-      "runtime_arch": "amd64"
+      "runtime_arch": "amd64",
+      "hostname": "must-not-leak"
     },
     "hardware": {
       "firmware_mode": "uefi",
@@ -88,7 +89,7 @@
       }
     ],
     "privacy": {
-      "contains_personal_data": false,
+      "contains_personal_data": true,
       "excluded_by_default": [
         "hostname",
         "user profiles"
@@ -112,11 +113,11 @@
   },
   "provider_rounds": [
     {
-      "schema_version": "",
-      "report_id": "",
-      "generated_at": "0001-01-01T00:00:00Z",
+      "schema_version": "0.1.0",
+      "report_id": "report-eval-insufficient-evidence",
+      "generated_at": "2026-07-23T10:00:00Z",
       "state": "needs_more_evidence",
-      "round": 0,
+      "round": 1,
       "evidence_requests": [
         {
           "id": "req-sources",
@@ -128,17 +129,17 @@
           "timeout_seconds": 30
         }
       ],
-      "audit_timeline": null,
       "limitations": [
         "Initial evidence is too sparse."
-      ]
+      ],
+      "retrieved_sources": []
     },
     {
-      "schema_version": "",
-      "report_id": "",
-      "generated_at": "0001-01-01T00:00:00Z",
+      "schema_version": "0.1.0",
+      "report_id": "report-eval-insufficient-evidence",
+      "generated_at": "2026-07-23T10:00:00Z",
       "state": "completed",
-      "round": 0,
+      "round": 2,
       "assessment": {
         "schema_version": "0.2.0",
         "report_id": "report-eval-insufficient-evidence",
@@ -180,23 +181,27 @@
         "sources": []
       },
       "evidence_requests": [],
-      "audit_timeline": null,
       "limitations": [
         "Refuse strong claims when evidence remains incomplete."
-      ]
+      ],
+      "retrieved_sources": []
     }
   ],
   "evidence_catalog": {
     "review_missing_sources": {
-      "request_id": "",
-      "operation": "",
-      "collected_at": "0001-01-01T00:00:00Z",
+      "request_id": "req-sources",
+      "operation": "review_missing_sources",
+      "privacy_class": "",
+      "collected_at": "2026-07-23T10:00:00Z",
       "facts": {
-        "missing_checks": 2
+        "check_ids": [
+          "storage.smart",
+          "boot.bcd"
+        ],
+        "missing_count": 2
       },
       "evidence_refs": [
-        "checks[1].status",
-        "checks[2].status"
+        "invented.collector.ref"
       ]
     }
   },

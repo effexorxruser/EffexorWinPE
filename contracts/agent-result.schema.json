@@ -239,6 +239,7 @@
             "evidence_requested",
             "evidence_collected",
             "duplicate_request_rejected",
+            "evidence_redacted",
             "loop_completed",
             "loop_blocked",
             "loop_failed"

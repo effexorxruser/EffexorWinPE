@@ -11,71 +11,44 @@ import (
 const maxEvidenceFacts = 64
 const maxEvidenceRefCount = 32
 
-// ValidateEvidencePayload checks collector output against the approved request.
-func ValidateEvidencePayload(payload EvidencePayload, request EvidenceRequest) error {
+// NormalizeAndValidateEvidencePayload validates collector facts against the
+// operation schema, applies privacy redaction checks, and replaces any
+// collector-supplied evidence refs with loop-generated refs.
+func NormalizeAndValidateEvidencePayload(payload EvidencePayload, request EvidenceRequest) (EvidencePayload, error) {
 	if err := validateID("evidence payload request", payload.RequestID); err != nil {
-		return err
+		return EvidencePayload{}, err
 	}
 	if payload.RequestID != request.ID {
-		return fmt.Errorf("evidence payload request_id %q does not match request %q", payload.RequestID, request.ID)
+		return EvidencePayload{}, fmt.Errorf("evidence payload request_id %q does not match request %q", payload.RequestID, request.ID)
 	}
 	if payload.Operation != request.Operation {
-		return fmt.Errorf("evidence payload operation %q does not match request %q", payload.Operation, request.Operation)
+		return EvidencePayload{}, fmt.Errorf("evidence payload operation %q does not match request %q", payload.Operation, request.Operation)
 	}
 	if !IsAllowedEvidenceOperation(payload.Operation) {
-		return fmt.Errorf("evidence payload uses unknown operation %q", payload.Operation)
+		return EvidencePayload{}, fmt.Errorf("evidence payload uses unknown operation %q", payload.Operation)
 	}
 	if payload.CollectedAt.IsZero() {
-		return fmt.Errorf("evidence payload collected_at is required")
+		return EvidencePayload{}, fmt.Errorf("evidence payload collected_at is required")
 	}
 	if payload.Facts == nil {
-		return fmt.Errorf("evidence payload facts must be present")
+		return EvidencePayload{}, fmt.Errorf("evidence payload facts must be present")
 	}
-	if len(payload.Facts) > maxEvidenceFacts {
-		return fmt.Errorf("evidence payload facts exceed %d entries", maxEvidenceFacts)
+	// Drop collector-supplied refs; they are never trusted.
+	payload.EvidenceRefs = nil
+	payload.PrivacyClass = request.PrivacyClass
+	payload.Facts = ApplyPrivacyRedactions(payload.Facts, request.PrivacyClass)
+	if err := ValidateOperationFacts(payload.Operation, payload.Facts); err != nil {
+		return EvidencePayload{}, err
 	}
-	for key, value := range payload.Facts {
-		if strings.TrimSpace(key) == "" || len(key) > 128 {
-			return fmt.Errorf("evidence payload fact key is invalid")
-		}
-		if forbiddenPath(key) {
-			return fmt.Errorf("evidence payload fact key %q is forbidden", key)
-		}
-		switch typed := value.(type) {
-		case nil, bool, string, float64, int, int64:
-			if str, ok := value.(string); ok {
-				if err := boundedText("evidence fact", str, 2000); err != nil {
-					return err
-				}
-				if err := RejectCommandText("evidence fact", str); err != nil {
-					return err
-				}
-			}
-			_ = typed
-		default:
-			return fmt.Errorf("evidence payload fact %q has unsupported type", key)
-		}
+	refs, err := GenerateEvidenceRefs(payload.Operation, payload.Facts)
+	if err != nil {
+		return EvidencePayload{}, err
 	}
-	if payload.EvidenceRefs == nil {
-		return fmt.Errorf("evidence payload evidence_refs must be present")
+	payload.EvidenceRefs = refs
+	if err := validateSize("evidence payload", payload, MaxEvidencePayload); err != nil {
+		return EvidencePayload{}, err
 	}
-	if len(payload.EvidenceRefs) > maxEvidenceRefCount {
-		return fmt.Errorf("evidence payload evidence_refs exceed %d entries", maxEvidenceRefCount)
-	}
-	seen := map[string]struct{}{}
-	for _, ref := range payload.EvidenceRefs {
-		if err := boundedText("evidence ref", ref, 512); err != nil {
-			return err
-		}
-		if forbiddenPath(ref) {
-			return fmt.Errorf("evidence payload evidence_ref %q is forbidden", ref)
-		}
-		if _, duplicate := seen[ref]; duplicate {
-			return fmt.Errorf("evidence payload repeats evidence_ref %q", ref)
-		}
-		seen[ref] = struct{}{}
-	}
-	return validateSize("evidence payload", payload, MaxEvidencePayload)
+	return payload, nil
 }
 
 func forbiddenPath(value string) bool {
@@ -102,95 +75,105 @@ func forbiddenPath(value string) bool {
 	return false
 }
 
-func argumentMatchesReport(name string, value any, report diagnostics.Report) error {
+func argumentMatchesReport(name string, value any, report diagnostics.Report) (any, error) {
 	switch name {
 	case "root":
 		root, ok := value.(string)
 		if !ok {
-			return fmt.Errorf("root must be a string")
+			return nil, fmt.Errorf("root must be a string")
 		}
 		if forbiddenPath(root) {
-			return fmt.Errorf("root path is forbidden")
+			return nil, fmt.Errorf("root path is forbidden")
 		}
 		for _, install := range report.Installations {
-			if install.Root == root {
-				return nil
+			if WindowsPathsEqual(install.Root, root) {
+				return install.Root, nil
 			}
 		}
-		return fmt.Errorf("root %q is not a discovered Windows installation", root)
+		return nil, fmt.Errorf("root %q is not a discovered Windows installation", root)
 	case "store_path":
 		path, ok := value.(string)
 		if !ok {
-			return fmt.Errorf("store_path must be a string")
+			return nil, fmt.Errorf("store_path must be a string")
 		}
-		// BCD paths may start with a single backslash; reject UNC and device namespaces.
 		if strings.HasPrefix(path, `\\`) || strings.HasPrefix(path, "//") ||
 			strings.Contains(path, "..") || strings.Contains(path, "\x00") ||
 			strings.Contains(strings.ToLower(path), `\\.`) || strings.Contains(path, `\\?`) {
-			return fmt.Errorf("store_path is forbidden")
+			return nil, fmt.Errorf("store_path is forbidden")
 		}
 		for _, store := range report.Boot.BCDStores {
-			if store.Path == path {
-				return nil
+			if WindowsPathsEqual(store.Path, path) {
+				return store.Path, nil
 			}
 		}
-		return fmt.Errorf("store_path %q is not a discovered BCD store", path)
+		return nil, fmt.Errorf("store_path %q is not a discovered BCD store", path)
 	case "device_id":
 		deviceID := stringifyArgument(value)
 		for _, health := range report.Storage.DriveHealth {
-			if health.DeviceID == deviceID {
-				return nil
+			if strings.EqualFold(health.DeviceID, deviceID) {
+				return health.DeviceID, nil
 			}
 		}
 		for _, disk := range report.Storage.Disks {
 			if strconv.Itoa(disk.Number) == deviceID {
-				return nil
+				return strconv.Itoa(disk.Number), nil
 			}
 		}
-		return fmt.Errorf("device_id %q is not present in the report", deviceID)
+		return nil, fmt.Errorf("device_id %q is not present in the report", deviceID)
 	case "disk_number":
 		number, ok := asInt(value)
 		if !ok {
-			return fmt.Errorf("disk_number must be an integer")
+			return nil, fmt.Errorf("disk_number must be an integer")
 		}
 		for _, disk := range report.Storage.Disks {
 			if disk.Number == number {
-				return nil
+				return number, nil
 			}
 		}
-		return fmt.Errorf("disk_number %d is not present in the report", number)
+		return nil, fmt.Errorf("disk_number %d is not present in the report", number)
 	case "mount_point":
 		mount, ok := value.(string)
 		if !ok {
-			return fmt.Errorf("mount_point must be a string")
+			return nil, fmt.Errorf("mount_point must be a string")
 		}
 		if forbiddenPath(mount) {
-			return fmt.Errorf("mount_point is forbidden")
+			return nil, fmt.Errorf("mount_point is forbidden")
 		}
 		for _, volume := range report.Storage.BitLockerVolumes {
-			if volume.MountPoint == mount {
-				return nil
+			if WindowsPathsEqual(volume.MountPoint, mount) {
+				return volume.MountPoint, nil
 			}
 		}
 		for _, partition := range report.Storage.Partitions {
-			if partition.DriveLetter != "" && (partition.DriveLetter == mount || partition.DriveLetter+":" == mount || partition.DriveLetter+`:\` == mount) {
-				return nil
+			if partition.DriveLetter == "" {
+				continue
+			}
+			canonical := partition.DriveLetter + ":"
+			candidates := []string{
+				partition.DriveLetter,
+				canonical,
+				partition.DriveLetter + `:\`,
+			}
+			for _, candidate := range candidates {
+				if WindowsPathsEqual(candidate, mount) {
+					return canonical, nil
+				}
 			}
 		}
-		return fmt.Errorf("mount_point %q is not present in the report", mount)
+		return nil, fmt.Errorf("mount_point %q is not present in the report", mount)
 	case "check_id":
 		checkID, ok := value.(string)
 		if !ok {
-			return fmt.Errorf("check_id must be a string")
+			return nil, fmt.Errorf("check_id must be a string")
 		}
 		for _, check := range report.Checks {
 			if check.ID == checkID {
-				return nil
+				return check.ID, nil
 			}
 		}
-		return fmt.Errorf("check_id %q is not present in the report", checkID)
+		return nil, fmt.Errorf("check_id %q is not present in the report", checkID)
 	default:
-		return fmt.Errorf("unsupported argument %q", name)
+		return nil, fmt.Errorf("unsupported argument %q", name)
 	}
 }
 

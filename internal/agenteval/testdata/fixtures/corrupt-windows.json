@@ -11,7 +11,8 @@
     },
     "environment": {
       "runtime_os": "windows",
-      "runtime_arch": "amd64"
+      "runtime_arch": "amd64",
+      "hostname": "must-not-leak"
     },
     "hardware": {
       "firmware_mode": "uefi",
@@ -106,7 +107,7 @@
       }
     ],
     "privacy": {
-      "contains_personal_data": false,
+      "contains_personal_data": true,
       "excluded_by_default": [
         "hostname",
         "user profiles"
@@ -130,11 +131,11 @@
   },
   "provider_rounds": [
     {
-      "schema_version": "",
-      "report_id": "",
-      "generated_at": "0001-01-01T00:00:00Z",
+      "schema_version": "0.1.0",
+      "report_id": "report-eval-corrupt-windows",
+      "generated_at": "2026-07-23T10:00:00Z",
       "state": "completed",
-      "round": 0,
+      "round": 1,
       "assessment": {
         "schema_version": "0.2.0",
         "report_id": "report-eval-corrupt-windows",
@@ -176,10 +177,10 @@
         "sources": []
       },
       "evidence_requests": [],
-      "audit_timeline": null,
       "limitations": [
         "No repair command is emitted; technician confirmation remains mandatory."
-      ]
+      ],
+      "retrieved_sources": []
     }
   ],
   "evidence_catalog": {},

@@ -56,7 +56,7 @@ func baseReport(id string, now time.Time) diagnostics.Report {
 		ReportID:      "report-eval-" + id,
 		CollectedAt:   now,
 		Collector:     diagnostics.Collector{Name: "effexorwinpe-collector", Version: "eval-fixture"},
-		Environment:   diagnostics.Environment{RuntimeOS: "windows", RuntimeArch: "amd64"},
+		Environment:   diagnostics.Environment{RuntimeOS: "windows", RuntimeArch: "amd64", Hostname: "must-not-leak"},
 		Hardware: diagnostics.Hardware{
 			FirmwareMode: "uefi",
 			System:       diagnostics.System{Manufacturer: "Example OEM", Model: "Anon-Notebook"},
@@ -94,7 +94,7 @@ func baseReport(id string, now time.Time) diagnostics.Report {
 			},
 		}},
 		Checks:  []diagnostics.Check{{ID: "collector.runtime", Status: "ok", Summary: "collector running"}},
-		Privacy: diagnostics.Privacy{ExcludedByDefault: []string{"hostname", "user profiles"}},
+		Privacy: diagnostics.Privacy{ContainsPersonalData: true, ExcludedByDefault: []string{"hostname", "user profiles"}},
 	}
 }
 
@@ -111,7 +111,7 @@ func baseSession(reportID string, now time.Time) session.Session {
 	}
 }
 
-func completed(reportID string, now time.Time, finding diagnosis.Finding, nextOp, limitation string, refs ...string) agentloop.Result {
+func completed(reportID string, now time.Time, round int, finding diagnosis.Finding, nextOp, limitation string, refs ...string) agentloop.ProviderProposal {
 	if finding.EvidenceRefs == nil {
 		finding.EvidenceRefs = refs
 	}
@@ -138,11 +138,40 @@ func completed(reportID string, now time.Time, finding diagnosis.Finding, nextOp
 		Limitations: []string{limitation},
 		Sources:     []diagnosis.Source{},
 	}
-	return agentloop.Result{
+	return agentloop.ProviderProposal{
+		SchemaVersion:    agentloop.SchemaVersion,
+		ReportID:         reportID,
+		GeneratedAt:      now,
 		State:            agentloop.StateCompleted,
+		Round:            round,
 		Assessment:       &assessment,
 		EvidenceRequests: []agentloop.EvidenceRequest{},
 		Limitations:      []string{limitation},
+		RetrievedSources: []diagnosis.Source{},
+	}
+}
+
+func needsEvidence(reportID string, now time.Time, round int, req agentloop.EvidenceRequest, limitation string) agentloop.ProviderProposal {
+	return agentloop.ProviderProposal{
+		SchemaVersion:    agentloop.SchemaVersion,
+		ReportID:         reportID,
+		GeneratedAt:      now,
+		State:            agentloop.StateNeedsMoreEvidence,
+		Round:            round,
+		EvidenceRequests: []agentloop.EvidenceRequest{req},
+		Limitations:      []string{limitation},
+		RetrievedSources: []diagnosis.Source{},
+	}
+}
+
+func catalogPayload(requestID, operation string, now time.Time, facts map[string]any) agentloop.EvidencePayload {
+	return agentloop.EvidencePayload{
+		RequestID:   requestID,
+		Operation:   operation,
+		CollectedAt: now,
+		Facts:       facts,
+		// Intentionally wrong collector refs — loop must ignore them.
+		EvidenceRefs: []string{"invented.collector.ref"},
 	}
 }
 
@@ -152,14 +181,13 @@ func healthy(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "storage.no-obvious-fault", Title: "No obvious storage fault in collected evidence",
 		Severity: diagnosis.SeverityInfo, Confidence: diagnosis.ConfidenceLow,
-		Rationale:    "Disk inventory is present and healthy, but this is not a warranty of hardware health.",
-		EvidenceRefs: []string{"storage.disks[0].health_status"},
+		Rationale: "Disk inventory is present and healthy, but this is not a warranty of hardware health.",
 	}
 	return agenteval.Fixture{
 		ID: "healthy", Description: "Anonymized healthy inventory with low-confidence no-fault finding.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpInspectStorageHealth,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpInspectStorageHealth,
 				"Missing vendor-specific thresholds; absence of faults is not proof of health.",
 				"storage.disks[0].health_status"),
 		},
@@ -188,14 +216,13 @@ func failingHDD(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "storage.hdd-warning", Title: "HDD health status reports warning",
 		Severity: diagnosis.SeverityCritical, Confidence: diagnosis.ConfidenceMedium,
-		Rationale:    "Drive health counters show elevated read errors; verify with vendor diagnostics.",
-		EvidenceRefs: []string{"storage.drive_health[0].health_status", "storage.drive_health[0].read_errors_total"},
+		Rationale: "Drive health counters show elevated read errors; verify with vendor diagnostics.",
 	}
 	return agenteval.Fixture{
 		ID: "failing-hdd", Description: "Failing HDD counters without claiming irreversible failure.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpInspectStorageHealth,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpInspectStorageHealth,
 				"Controller reporting varies; confirm with vendor utility before replacement.",
 				"storage.drive_health[0].health_status", "storage.drive_health[0].read_errors_total"),
 		},
@@ -219,14 +246,13 @@ func missingSMART(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "storage.smart-missing", Title: "SMART counters are unavailable",
 		Severity: diagnosis.SeverityUnknown, Confidence: diagnosis.ConfidenceHigh,
-		Rationale:    "Missing SMART does not prove the disk is healthy.",
-		EvidenceRefs: []string{"checks[1].status"},
+		Rationale: "Missing SMART does not prove the disk is healthy.",
 	}
 	return agenteval.Fixture{
 		ID: "missing-smart", Description: "Missing SMART must lower confidence, not imply health.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpReviewMissingSources,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpReviewMissingSources,
 				"Unavailable SMART evidence blocks strong storage conclusions.",
 				"checks[1].status"),
 		},
@@ -251,14 +277,13 @@ func bitlockerUnavailable(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "bitlocker.inventory-unavailable", Title: "BitLocker inventory is unavailable",
 		Severity: diagnosis.SeverityUnknown, Confidence: diagnosis.ConfidenceHigh,
-		Rationale:    "An unavailable inventory is not evidence that volumes are unlocked or unprotected.",
-		EvidenceRefs: []string{"storage.bitlocker_inventory.status"},
+		Rationale: "An unavailable inventory is not evidence that volumes are unlocked or unprotected.",
 	}
 	return agenteval.Fixture{
 		ID: "bitlocker-unavailable", Description: "Unavailable BitLocker inventory stays non-assertive.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpReviewBitLockerAccess,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpReviewBitLockerAccess,
 				"Do not infer encryption state from a missing provider.",
 				"storage.bitlocker_inventory.status"),
 		},
@@ -290,14 +315,13 @@ func multipleWindows(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "windows.multiple-installations", Title: "Multiple Windows installations were detected",
 		Severity: diagnosis.SeverityWarning, Confidence: diagnosis.ConfidenceHigh,
-		Rationale:    "Repair planning must identify the intended target before offline work.",
-		EvidenceRefs: []string{"windows_installations[0].root", "windows_installations[1].root"},
+		Rationale: "Repair planning must identify the intended target before offline work.",
 	}
 	return agenteval.Fixture{
 		ID: "multiple-windows", Description: "Two offline Windows installs require target selection.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpSelectWindowsTarget,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpSelectWindowsTarget,
 				"No installation is chosen automatically.",
 				"windows_installations[0].root", "windows_installations[1].root"),
 		},
@@ -322,14 +346,13 @@ func bcdMismatch(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "boot.bcd-mismatch", Title: "BCD entries may not match the detected Windows root",
 		Severity: diagnosis.SeverityWarning, Confidence: diagnosis.ConfidenceMedium,
-		Rationale:    "Visible BCD store and installation root require correlation before boot repair.",
-		EvidenceRefs: []string{"boot.bcd_stores[0].path", "windows_installations[0].root", "checks[1].status"},
+		Rationale: "Visible BCD store and installation root require correlation before boot repair.",
 	}
 	return agenteval.Fixture{
 		ID: "bcd-mismatch", Description: "BCD visibility disagrees with the offline Windows root.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpInspectBCDEntries,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpInspectBCDEntries,
 				"No BCD mutation is proposed by the agent loop.",
 				"boot.bcd_stores[0].path", "windows_installations[0].root", "checks[1].status"),
 		},
@@ -358,26 +381,24 @@ func noDHCP(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "network.no-dhcp", Title: "Network media is disconnected",
 		Severity: diagnosis.SeverityWarning, Confidence: diagnosis.ConfidenceMedium,
-		Rationale:    "No DHCP lease can be expected while media is disconnected.",
-		EvidenceRefs: []string{"hardware.network_adapters[0].status"},
+		Rationale: "No DHCP lease can be expected while media is disconnected.",
 	}
 	return agenteval.Fixture{
 		ID: "no-dhcp", Description: "Disconnected NIC leads to a multi-step network evidence request.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			{
-				State: agentloop.StateNeedsMoreEvidence, EvidenceRequests: []agentloop.EvidenceRequest{req},
-				Limitations: []string{"Need a second look at adapter status before concluding."},
-			},
-			completed(id, now, finding, agentloop.OpReviewMissingSources,
+		ProviderRounds: []agentloop.ProviderProposal{
+			needsEvidence(id, now, 1, req, "Need a second look at adapter status before concluding."),
+			completed(id, now, 2, finding, agentloop.OpReviewMissingSources,
 				"Cable, link light, and DHCP server state remain outside this report.",
 				"hardware.network_adapters[0].status"),
 		},
 		EvidenceCatalog: map[string]agentloop.EvidencePayload{
-			agentloop.CanonicalRequestKey(req): {
-				Facts:        map[string]any{"status": "media_disconnected", "dhcp": "none"},
-				EvidenceRefs: []string{"hardware.network_adapters[0].status"},
-			},
+			agentloop.CanonicalRequestKey(req): catalogPayload("req-network", agentloop.OpInspectNetworkStatus, now, map[string]any{
+				"adapters": []any{map[string]any{
+					"name": "Example NIC", "status": "media_disconnected", "status_code": 7,
+				}},
+				"dhcp_state": "none",
+			}),
 		},
 		Expected: agenteval.Expectation{
 			FinalState: agentloop.StateCompleted, FinalRound: 2, FindingIDs: []string{"network.no-dhcp"},
@@ -412,14 +433,13 @@ func dualBoot(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "boot.dual-boot", Title: "Dual-boot configuration requires careful target selection",
 		Severity: diagnosis.SeverityWarning, Confidence: diagnosis.ConfidenceHigh,
-		Rationale:    "Two installs and two BCD stores are visible; choose the intended boot path first.",
-		EvidenceRefs: []string{"windows_installations[0].root", "windows_installations[1].root", "boot.bcd_stores[1].path"},
+		Rationale: "Two installs and two BCD stores are visible; choose the intended boot path first.",
 	}
 	return agenteval.Fixture{
 		ID: "dual-boot", Description: "Dual-boot Windows layout with multiple BCD stores.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpIdentifyWindowsInstallation,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpIdentifyWindowsInstallation,
 				"Agent loop does not alter boot order.",
 				"windows_installations[0].root", "windows_installations[1].root", "boot.bcd_stores[1].path"),
 		},
@@ -454,26 +474,22 @@ func insufficientEvidence(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "evidence.insufficient", Title: "Collected evidence is insufficient for a device-specific claim",
 		Severity: diagnosis.SeverityUnknown, Confidence: diagnosis.ConfidenceHigh,
-		Rationale:    "Too many sources are missing to assert hardware or OS health.",
-		EvidenceRefs: []string{"checks[1].status", "checks[2].status"},
+		Rationale: "Too many sources are missing to assert hardware or OS health.",
 	}
 	return agenteval.Fixture{
 		ID: "insufficient-evidence", Description: "Sparse report forces needs_more_evidence then a cautious result.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			{
-				State: agentloop.StateNeedsMoreEvidence, EvidenceRequests: []agentloop.EvidenceRequest{req},
-				Limitations: []string{"Initial evidence is too sparse."},
-			},
-			completed(id, now, finding, agentloop.OpReviewMissingSources,
+		ProviderRounds: []agentloop.ProviderProposal{
+			needsEvidence(id, now, 1, req, "Initial evidence is too sparse."),
+			completed(id, now, 2, finding, agentloop.OpReviewMissingSources,
 				"Refuse strong claims when evidence remains incomplete.",
 				"checks[1].status", "checks[2].status"),
 		},
 		EvidenceCatalog: map[string]agentloop.EvidencePayload{
-			agentloop.CanonicalRequestKey(req): {
-				Facts:        map[string]any{"missing_checks": 2},
-				EvidenceRefs: []string{"checks[1].status", "checks[2].status"},
-			},
+			agentloop.CanonicalRequestKey(req): catalogPayload("req-sources", agentloop.OpReviewMissingSources, now, map[string]any{
+				"missing_count": 2,
+				"check_ids":     []any{"storage.smart", "boot.bcd"},
+			}),
 		},
 		Expected: agenteval.Expectation{
 			FinalState: agentloop.StateCompleted, FinalRound: 2, FindingIDs: []string{"evidence.insufficient"},
@@ -494,14 +510,13 @@ func corruptWindows(now time.Time) agenteval.Fixture {
 	finding := diagnosis.Finding{
 		ID: "windows.corrupt-install", Title: "Windows installation metadata looks corrupt or unreadable",
 		Severity: diagnosis.SeverityCritical, Confidence: diagnosis.ConfidenceMedium,
-		Rationale:    "Offline hive read failed; treat the install as damaged until verified.",
-		EvidenceRefs: []string{"windows_installations[0].root", "checks[1].status"},
+		Rationale: "Offline hive read failed; treat the install as damaged until verified.",
 	}
 	return agenteval.Fixture{
 		ID: "corrupt-windows", Description: "Unreadable offline Windows hive / missing version metadata.",
 		Report: report, Session: baseSession(id, now),
-		ProviderRounds: []agentloop.Result{
-			completed(id, now, finding, agentloop.OpIdentifyWindowsInstallation,
+		ProviderRounds: []agentloop.ProviderProposal{
+			completed(id, now, 1, finding, agentloop.OpIdentifyWindowsInstallation,
 				"No repair command is emitted; technician confirmation remains mandatory.",
 				"windows_installations[0].root", "checks[1].status"),
 		},

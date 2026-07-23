@@ -11,7 +11,8 @@
     },
     "environment": {
       "runtime_os": "windows",
-      "runtime_arch": "amd64"
+      "runtime_arch": "amd64",
+      "hostname": "must-not-leak"
     },
     "hardware": {
       "firmware_mode": "uefi",
@@ -106,7 +107,7 @@
       }
     ],
     "privacy": {
-      "contains_personal_data": false,
+      "contains_personal_data": true,
       "excluded_by_default": [
         "hostname",
         "user profiles"
@@ -130,11 +131,11 @@
   },
   "provider_rounds": [
     {
-      "schema_version": "",
-      "report_id": "",
-      "generated_at": "0001-01-01T00:00:00Z",
+      "schema_version": "0.1.0",
+      "report_id": "report-eval-no-dhcp",
+      "generated_at": "2026-07-23T10:00:00Z",
       "state": "needs_more_evidence",
-      "round": 0,
+      "round": 1,
       "evidence_requests": [
         {
           "id": "req-network",
@@ -146,17 +147,17 @@
           "timeout_seconds": 20
         }
       ],
-      "audit_timeline": null,
       "limitations": [
         "Need a second look at adapter status before concluding."
-      ]
+      ],
+      "retrieved_sources": []
     },
     {
-      "schema_version": "",
-      "report_id": "",
-      "generated_at": "0001-01-01T00:00:00Z",
+      "schema_version": "0.1.0",
+      "report_id": "report-eval-no-dhcp",
+      "generated_at": "2026-07-23T10:00:00Z",
       "state": "completed",
-      "round": 0,
+      "round": 2,
       "assessment": {
         "schema_version": "0.2.0",
         "report_id": "report-eval-no-dhcp",
@@ -197,23 +198,30 @@
         "sources": []
       },
       "evidence_requests": [],
-      "audit_timeline": null,
       "limitations": [
         "Cable, link light, and DHCP server state remain outside this report."
-      ]
+      ],
+      "retrieved_sources": []
     }
   ],
   "evidence_catalog": {
     "inspect_network_status": {
-      "request_id": "",
-      "operation": "",
-      "collected_at": "0001-01-01T00:00:00Z",
+      "request_id": "req-network",
+      "operation": "inspect_network_status",
+      "privacy_class": "",
+      "collected_at": "2026-07-23T10:00:00Z",
       "facts": {
-        "dhcp": "none",
-        "status": "media_disconnected"
+        "adapters": [
+          {
+            "name": "Example NIC",
+            "status": "media_disconnected",
+            "status_code": 7
+          }
+        ],
+        "dhcp_state": "none"
       },
       "evidence_refs": [
-        "hardware.network_adapters[0].status"
+        "invented.collector.ref"
       ]
     }
   },

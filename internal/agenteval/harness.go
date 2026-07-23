@@ -28,7 +28,7 @@ type Fixture struct {
 	Description     string                               `json:"description"`
 	Report          diagnostics.Report                   `json:"report"`
 	Session         session.Session                      `json:"session"`
-	ProviderRounds  []agentloop.Result                   `json:"provider_rounds"`
+	ProviderRounds  []agentloop.ProviderProposal         `json:"provider_rounds"`
 	EvidenceCatalog map[string]agentloop.EvidencePayload `json:"evidence_catalog"`
 	Expected        Expectation                          `json:"expected"`
 }

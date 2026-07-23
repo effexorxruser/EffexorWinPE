@@ -133,7 +133,11 @@ func IsAllowedEvidenceOperation(operation string) bool {
 
 // ValidateEvidenceRequest checks operation membership, privacy class, arguments,
 // timeout, and that argument values exist in the current diagnostic report.
-func ValidateEvidenceRequest(request EvidenceRequest, report diagnostics.Report) error {
+// Path-like arguments are normalized in place for stable duplicate detection.
+func ValidateEvidenceRequest(request *EvidenceRequest, report diagnostics.Report) error {
+	if request == nil {
+		return fmt.Errorf("evidence request is required")
+	}
 	if err := validateID("evidence request", request.ID); err != nil {
 		return err
 	}
@@ -178,10 +182,13 @@ func ValidateEvidenceRequest(request EvidenceRequest, report diagnostics.Report)
 				return err
 			}
 		}
-		if err := argumentMatchesReport(name, value, report); err != nil {
+		canonical, err := argumentMatchesReport(name, value, report)
+		if err != nil {
 			return fmt.Errorf("evidence request %q: %w", request.ID, err)
 		}
+		args[name] = canonical
 	}
+	request.Arguments = args
 	return nil
 }
 
@@ -199,7 +206,7 @@ func CanonicalRequestKey(request EvidenceRequest) string {
 	parts := make([]string, 0, 1+len(names))
 	parts = append(parts, request.Operation)
 	for _, name := range names {
-		parts = append(parts, name+"="+stringifyArgument(args[name]))
+		parts = append(parts, name+"="+stringifyArgument(normalizeArgumentValue(name, args[name])))
 	}
 	return strings.Join(parts, "|")
 }

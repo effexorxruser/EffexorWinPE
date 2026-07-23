@@ -10,10 +10,9 @@ import (
 	"github.com/effexorxruser/EffexorWinPE/internal/session"
 )
 
-// RoundProvider proposes one agent-loop turn. Implementations must remain
-// provider-neutral; the existing gateway Analyzer interface stays unchanged.
+// RoundProvider proposes one agent-loop turn using only sanitized context.
 type RoundProvider interface {
-	Propose(ctx context.Context, input RoundInput) (Result, error)
+	Propose(ctx context.Context, input RoundInput) (ProviderProposal, error)
 }
 
 // EvidenceCollector fulfills validated read-only evidence requests locally.
@@ -57,6 +56,7 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 		defer cancel()
 	}
 
+	sanitized := NewSanitizedAgentContext(report, sess)
 	audit := []AuditEvent{}
 	priorEvidence := []EvidencePayload{}
 	priorKeys := []string{}
@@ -73,10 +73,9 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 		})
 
 		input := RoundInput{
-			Report:           report,
-			Session:          sess,
+			Context:          sanitized,
 			Round:            round,
-			PriorEvidence:    append([]EvidencePayload(nil), priorEvidence...),
+			PriorEvidence:    FilterUploadableEvidence(priorEvidence),
 			PriorRequestKeys: append([]string(nil), priorKeys...),
 		}
 		if err := validateSize("round input", input, options.MaxRequestBytes); err != nil {
@@ -87,35 +86,23 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 		if err != nil {
 			return loop.fail(report.ReportID, round, audit, "provider_error", "Provider failed without changing the client system.", options.Now()), err
 		}
-		proposal.Round = round
-		if proposal.ReportID == "" {
-			proposal.ReportID = report.ReportID
-		}
-		if proposal.GeneratedAt.IsZero() {
-			proposal.GeneratedAt = options.Now().UTC()
-		}
-		if proposal.SchemaVersion == "" {
-			proposal.SchemaVersion = SchemaVersion
-		}
-		if proposal.EvidenceRequests == nil {
-			proposal.EvidenceRequests = []EvidenceRequest{}
-		}
-		// The loop owns the audit timeline; provider-supplied events are ignored.
-		proposal.AuditTimeline = append([]AuditEvent{}, audit...)
-		if len(proposal.Limitations) == 0 {
-			proposal.Limitations = []string{"Online agent results remain provisional until a technician confirms them."}
-		}
-		if err := validateSize("provider response", proposal, options.MaxResponseBytes); err != nil {
+		if err := validateSize("provider proposal", proposal, options.MaxResponseBytes); err != nil {
 			return loop.fail(report.ReportID, round, audit, "response_too_large", err.Error(), options.Now()), err
 		}
-		validation := ValidationContext{
-			Report:           report,
-			Session:          sess,
-			PriorEvidence:    priorEvidence,
-			PriorRequestKeys: priorKeys,
-			MaxRounds:        options.MaxRounds,
+
+		providerURLs := make([]string, 0, len(proposal.RetrievedSources))
+		for _, source := range proposal.RetrievedSources {
+			providerURLs = append(providerURLs, source.URL)
 		}
-		if err := ValidateResult(proposal, validation); err != nil {
+		validation := ValidationContext{
+			Report:             report,
+			Session:            sess,
+			PriorEvidence:      FilterUploadableEvidence(priorEvidence),
+			PriorRequestKeys:   priorKeys,
+			MaxRounds:          options.MaxRounds,
+			ProviderSourceURLs: providerURLs,
+		}
+		if err := ValidateProposal(proposal, validation); err != nil {
 			if IsDuplicateEvidence(err) {
 				audit = append(audit, AuditEvent{
 					At:        options.Now().UTC(),
@@ -133,13 +120,14 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 			Round:     round,
 			Reference: proposal.State,
 		})
-		last = proposal
+		result := proposal.toResult(audit)
+		last = result
 
 		switch proposal.State {
 		case StateCompleted:
 			audit = append(audit, AuditEvent{At: options.Now().UTC(), Kind: AuditLoopCompleted, Round: round})
-			proposal.AuditTimeline = append([]AuditEvent{}, audit...)
-			return proposal, nil
+			result.AuditTimeline = append([]AuditEvent{}, audit...)
+			return result, nil
 		case StateBlocked:
 			audit = append(audit, AuditEvent{
 				At:        options.Now().UTC(),
@@ -147,8 +135,8 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 				Round:     round,
 				Reference: proposal.Block.Code,
 			})
-			proposal.AuditTimeline = append([]AuditEvent{}, audit...)
-			return proposal, nil
+			result.AuditTimeline = append([]AuditEvent{}, audit...)
+			return result, nil
 		case StateFailed:
 			audit = append(audit, AuditEvent{
 				At:        options.Now().UTC(),
@@ -156,8 +144,8 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 				Round:     round,
 				Reference: proposal.Failure.Code,
 			})
-			proposal.AuditTimeline = append([]AuditEvent{}, audit...)
-			return proposal, nil
+			result.AuditTimeline = append([]AuditEvent{}, audit...)
+			return result, nil
 		case StateNeedsMoreEvidence:
 			if round == options.MaxRounds {
 				blocked := Result{
@@ -202,32 +190,27 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 				if err != nil {
 					return loop.fail(report.ReportID, round, audit, "evidence_collection_failed", "Read-only evidence collection failed.", options.Now()), err
 				}
-				if payload.RequestID == "" {
-					payload.RequestID = request.ID
-				}
-				if payload.Operation == "" {
-					payload.Operation = request.Operation
-				}
-				if payload.CollectedAt.IsZero() {
-					payload.CollectedAt = options.Now().UTC()
-				}
-				if payload.Facts == nil {
-					payload.Facts = map[string]any{}
-				}
-				if payload.EvidenceRefs == nil {
-					payload.EvidenceRefs = []string{}
-				}
-				if err := ValidateEvidencePayload(payload, request); err != nil {
+				normalized, err := NormalizeAndValidateEvidencePayload(payload, request)
+				if err != nil {
 					return loop.fail(report.ReportID, round, audit, "invalid_evidence_payload", "Collected evidence failed validation.", options.Now()), err
 				}
-				priorEvidence = append(priorEvidence, payload)
+				priorEvidence = append(priorEvidence, normalized)
 				priorKeys = append(priorKeys, key)
 				audit = append(audit, AuditEvent{
 					At:        options.Now().UTC(),
 					Kind:      AuditEvidenceCollected,
 					Round:     round,
-					Reference: payload.RequestID,
+					Reference: normalized.RequestID,
 				})
+				if !MayUploadEvidence(normalized.PrivacyClass) {
+					audit = append(audit, AuditEvent{
+						At:        options.Now().UTC(),
+						Kind:      AuditEvidenceRedacted,
+						Round:     round,
+						Reference: normalized.RequestID,
+						Detail:    "privacy_class blocks upload to the next provider round",
+					})
+				}
 			}
 		default:
 			return loop.fail(report.ReportID, round, audit, "invalid_state", "Provider returned an unsupported state.", options.Now()), fmt.Errorf("unsupported state %q", proposal.State)
