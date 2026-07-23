@@ -211,6 +211,8 @@
   "msg.stale_artifact": "Stale artifacts from a previous run were detected",
   "msg.export_fixed_confirm": "This is an internal fixed disk. Exporting here may affect client data. Continue?",
   "msg.export_no_removable": "No removable drives found. Show fixed drives (confirmation required)?",
+  "msg.export_path_excluded": "Export to this volume is blocked (WinPE X:\\ or a Windows installation disk)",
+  "msg.export_path_unknown": "Export to this volume is not allowed (unknown or unsupported drive type)",
   "msg.technical_details": "Technical details",
   "label.checks_ok": "ok",
   "label.checks_warning": "warnings",

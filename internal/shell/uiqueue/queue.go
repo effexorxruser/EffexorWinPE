@@ -37,6 +37,20 @@ func New() *Queue {
 	return &Queue{signal: make(chan struct{}, 1)}
 }
 
+// Reset clears progress and terminal state so a subsequent diagnostic run can
+// deliver progress and a new terminal result. Safe for concurrent use.
+func (q *Queue) Reset() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.latestProgress = nil
+	q.terminal = nil
+	q.terminalSet = false
+	select {
+	case <-q.signal:
+	default:
+	}
+}
+
 // PushProgress stores/coalesces the latest progress update.
 // Returns false when ignored because a terminal event already landed.
 func (q *Queue) PushProgress(p viewmodel.ProgressScreen) bool {

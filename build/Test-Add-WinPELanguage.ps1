@@ -2,6 +2,31 @@
 $ErrorActionPreference = "Stop"
 $Script = Join-Path $PSScriptRoot "Add-WinPELanguage.ps1"
 
+function Get-DismGetPackagesArgumentList {
+    param([string]$MountDirectory)
+    # Must stay aligned with Add-WinPELanguage.ps1.
+    return @("/English", "/Image:$MountDirectory", "/Get-Packages")
+}
+
+$dismArgs = Get-DismGetPackagesArgumentList -MountDirectory "C:\mount"
+if ($dismArgs.Count -lt 3) { throw "expected DISM argument list" }
+if ($dismArgs[0] -ne "/English") {
+    throw "DISM Get-Packages must start with /English for locale-independent output; got $($dismArgs[0])"
+}
+if ($dismArgs -notcontains "/Get-Packages") {
+    throw "DISM argument list missing /Get-Packages"
+}
+$scriptSource = Get-Content -LiteralPath $Script -Raw
+if ($scriptSource -notmatch 'function\s+Get-DismGetPackagesArgumentList') {
+    throw "Add-WinPELanguage.ps1 must define Get-DismGetPackagesArgumentList"
+}
+if ($scriptSource -notmatch 'return\s+@\("/English"') {
+    throw "Add-WinPELanguage.ps1 DISM helper must return /English as the first argument"
+}
+if ($scriptSource -notmatch 'dism\.exe\s+@dismArgs') {
+    throw "Add-WinPELanguage.ps1 must invoke dism.exe with the /English argument list"
+}
+
 function Get-WinPEOptionalComponentName {
     param([string]$PackageIdentity)
     if ([string]::IsNullOrWhiteSpace($PackageIdentity)) {

@@ -76,6 +76,12 @@ function Get-InstalledWinPEOptionalComponentsFromDismOutput {
     return @($names)
 }
 
+function Get-DismGetPackagesArgumentList {
+    param([string]$MountDirectory)
+    # /English keeps Package Identity labels stable on non-English Windows hosts.
+    return @("/English", "/Image:$MountDirectory", "/Get-Packages")
+}
+
 function Get-InstalledWinPEOptionalComponents {
     param(
         [string]$MountDirectory,
@@ -91,7 +97,8 @@ function Get-InstalledWinPEOptionalComponents {
         }
         return @($names)
     }
-    $output = & dism.exe "/Image:$MountDirectory" /Get-Packages 2>&1 | Out-String
+    $dismArgs = Get-DismGetPackagesArgumentList -MountDirectory $MountDirectory
+    $output = & dism.exe @dismArgs 2>&1 | Out-String
     if ($LASTEXITCODE -ne 0) {
         throw "DISM /Get-Packages failed with exit code $LASTEXITCODE.`n$output"
     }

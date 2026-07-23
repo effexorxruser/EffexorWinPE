@@ -42,6 +42,50 @@ func TestProgressCoalesceBeforeTerminal(t *testing.T) {
 	}
 }
 
+func TestSequentialRunsAfterReset(t *testing.T) {
+	q := New()
+
+	// First run: progress + terminal.
+	if !q.PushProgress(viewmodel.ProgressScreen{Percent: 10, Detail: "run1"}) {
+		t.Fatal("run1 progress rejected")
+	}
+	q.PushTerminal(orchestrator.Result{Code: orchestrator.ExitOK, FriendlyKey: "msg.collection_done"})
+	if q.PushProgress(viewmodel.ProgressScreen{Percent: 99}) {
+		t.Fatal("progress after terminal within one run must be ignored")
+	}
+	_, term1 := q.Drain()
+	if term1 == nil || term1.Code != orchestrator.ExitOK {
+		t.Fatalf("run1 terminal=%+v", term1)
+	}
+
+	// Without Reset, second run cannot deliver progress.
+	if q.PushProgress(viewmodel.ProgressScreen{Percent: 5}) {
+		t.Fatal("progress before Reset must stay blocked by first terminal")
+	}
+
+	q.Reset()
+
+	// Second run: progress + terminal must work; first terminal must not leak.
+	if !q.PushProgress(viewmodel.ProgressScreen{Percent: 20, Detail: "run2"}) {
+		t.Fatal("run2 progress rejected after Reset")
+	}
+	p2, tEmpty := q.Drain()
+	if tEmpty != nil || p2 == nil || p2.Percent != 20 || p2.Detail != "run2" {
+		t.Fatalf("run2 mid progress=%+v terminal=%+v", p2, tEmpty)
+	}
+	q.PushTerminal(orchestrator.Result{Code: orchestrator.ExitCorruptDiagnosis, FriendlyKey: "msg.diagnosis_corrupt"})
+	if q.PushProgress(viewmodel.ProgressScreen{Percent: 99}) {
+		t.Fatal("progress after terminal within run2 must be ignored")
+	}
+	_, term2 := q.Drain()
+	if term2 == nil || term2.Code != orchestrator.ExitCorruptDiagnosis {
+		t.Fatalf("run2 terminal=%+v", term2)
+	}
+	if term2.FriendlyKey == "msg.collection_done" {
+		t.Fatal("first-run terminal must not affect second run")
+	}
+}
+
 func TestConcurrentProgressAndTerminal(t *testing.T) {
 	q := New()
 	var wg sync.WaitGroup
@@ -112,8 +156,23 @@ func TestRaceDrainWhileProducers(t *testing.T) {
 	if !q.HasTerminal() {
 		t.Fatal("terminal must remain set")
 	}
-	// Drain may have already consumed the terminal pointer; HasTerminal stays true.
 	if q.PushProgress(viewmodel.ProgressScreen{Percent: 42}) {
 		t.Fatal("progress after terminal must be ignored")
 	}
+}
+
+func TestRaceSequentialResets(t *testing.T) {
+	q := New()
+	var wg sync.WaitGroup
+	for run := 0; run < 8; run++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			q.Reset()
+			q.PushProgress(viewmodel.ProgressScreen{Percent: n})
+			q.PushTerminal(orchestrator.Result{Code: orchestrator.ExitOK})
+			q.Drain()
+		}(run)
+	}
+	wg.Wait()
 }

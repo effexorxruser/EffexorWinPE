@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"unsafe"
 
@@ -154,6 +155,12 @@ func Run(cfg Config) error {
 		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
 		if int32(ret) <= 0 {
 			break
+		}
+		// Intercept Esc before DispatchMessage so child controls with focus
+		// (LISTBOX/EDIT/BUTTON) cannot swallow kiosk exit.
+		if ShouldExitKioskOnKeyMessage(m.Message, m.WParam, a.kiosk) {
+			a.applyKiosk(false)
+			continue
 		}
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
@@ -536,6 +543,9 @@ func (a *app) startDiagnostics() {
 		return
 	}
 	a.running = true
+	// Each diagnostic run needs a fresh queue; otherwise terminalSet from the
+	// previous run permanently blocks progress/terminal delivery.
+	a.queue.Reset()
 	a.mu.Unlock()
 
 	a.current = present.ScreenProgress
@@ -552,18 +562,63 @@ func (a *app) startDiagnostics() {
 	}()
 }
 
-func (a *app) pickExportDir() string {
-	dir := browseForFolder(a.hwnd, a.bundle.T("action.select_folder"))
-	if dir != "" {
-		return dir
-	}
+func (a *app) exportPolicy() export.ExportPolicy {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	var installRoots []string
 	for _, inst := range a.model.Windows.Installs {
 		installRoots = append(installRoots, inst.Root)
 	}
-	a.mu.Unlock()
-	policy := export.ExportPolicy{ExcludeRoots: export.DefaultExcludeRoots(installRoots)}
+	return export.ExportPolicy{ExcludeRoots: export.DefaultExcludeRoots(installRoots)}
+}
+
+// authorizeExportPath applies ExportPolicy to a concrete path from the folder
+// dialog or a previously stored target. Nested folders cannot bypass volume rules.
+func (a *app) authorizeExportPath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	eval, err := export.EvaluateExportPath(path, export.OSDriveScanner{}, a.exportPolicy())
+	if err != nil {
+		messageBox(a.hwnd, a.bundle.T("msg.export_usb_failed"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
+		return ""
+	}
+	switch eval.Decision {
+	case export.PathAllowRemovable:
+		return path
+	case export.PathRequireFixedConfirm:
+		msg := a.bundle.T("msg.export_fixed_confirm") + "\n" + export.FormatDrive(eval.Drive) + "\n" + path
+		if messageBox(a.hwnd, msg, a.bundle.T("app.brand"), mbYesNo|mbIconWarn) != idYes {
+			return ""
+		}
+		if messageBox(a.hwnd, a.bundle.T("msg.export_fixed_confirm"), a.bundle.T("app.brand"), mbOKCancel|mbIconWarn) != idOK {
+			return ""
+		}
+		return path
+	case export.PathRejectExcluded:
+		key := eval.ReasonKey
+		if key == "" {
+			key = "msg.export_path_excluded"
+		}
+		messageBox(a.hwnd, a.bundle.T(key)+"\n"+path, a.bundle.T("app.brand"), mbOK|mbIconWarn)
+		return ""
+	default:
+		key := eval.ReasonKey
+		if key == "" {
+			key = "msg.export_path_unknown"
+		}
+		messageBox(a.hwnd, a.bundle.T(key)+"\n"+path, a.bundle.T("app.brand"), mbOK|mbIconWarn)
+		return ""
+	}
+}
+
+func (a *app) pickExportDir() string {
+	dir := browseForFolder(a.hwnd, a.bundle.T("action.select_folder"))
+	if dir != "" {
+		return a.authorizeExportPath(dir)
+	}
+	policy := a.exportPolicy()
 	removable, fixed, err := export.CandidateDrives(export.OSDriveScanner{}, policy)
 	if err != nil {
 		messageBox(a.hwnd, a.bundle.T("msg.export_usb_failed"), a.bundle.T("app.brand"), mbOK|mbIconWarn)
@@ -612,6 +667,11 @@ func (a *app) doExport() {
 	a.mu.Unlock()
 	if target == "" {
 		target = a.pickExportDir()
+		if target == "" {
+			return
+		}
+	} else {
+		target = a.authorizeExportPath(target)
 		if target == "" {
 			return
 		}
