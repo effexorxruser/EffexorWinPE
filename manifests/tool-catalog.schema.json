@@ -1,0 +1,331 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effexorwinpe.local/manifests/tool-catalog.schema.json",
+  "title": "EffexorWinPE tool catalog",
+  "description": "Auditable catalog of first-party and candidate external rescue tools. Does not authorize downloading or shipping binaries; redistribution decisions are explicit per entry.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profiles", "tools"],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "notes": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/profile" }
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/tool" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profileId": {
+      "type": "string",
+      "enum": [
+        "minimal-diagnostics",
+        "technician-standard",
+        "data-recovery",
+        "network-enabled",
+        "multiboot-extras"
+      ]
+    },
+    "profileMaturity": {
+      "type": "string",
+      "enum": ["conceptual", "experimental", "release_candidate", "released"],
+      "description": "release_candidate and released may only reference tools with integration_status approved or shipped."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "disks_and_partitions",
+        "backup_and_restore",
+        "data_recovery",
+        "windows_boot_repair",
+        "hardware_diagnostics",
+        "network",
+        "malware_scanning",
+        "windows_installation",
+        "password_account_recovery",
+        "firmware_and_uefi",
+        "file_management",
+        "remote_support",
+        "platform"
+      ]
+    },
+    "license": {
+      "type": "string",
+      "enum": [
+        "mit",
+        "microsoft-winpe-component",
+        "microsoft-windows",
+        "gpl-2.0",
+        "gpl-3.0",
+        "lgpl-2.1",
+        "lgpl-3.0",
+        "bsd-2-clause",
+        "bsd-3-clause",
+        "apache-2.0",
+        "cc0-1.0",
+        "proprietary-vendor",
+        "unknown",
+        "not_applicable"
+      ]
+    },
+    "commercialUse": {
+      "type": "string",
+      "enum": ["allowed", "restricted", "prohibited", "unknown", "not_applicable"]
+    },
+    "redistribution": {
+      "type": "string",
+      "enum": ["allowed", "restricted", "prohibited", "not_applicable", "review_required"]
+    },
+    "downloadMode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "bundled_first_party",
+        "winpe_builtin",
+        "build_time_fetch",
+        "technician_cache",
+        "manual_official"
+      ]
+    },
+    "architecture": {
+      "type": "string",
+      "enum": ["amd64", "x86", "arm64", "any"]
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["winpe", "full_windows", "linux_live", "uefi_app", "any"]
+    },
+    "cliOrGui": {
+      "type": "string",
+      "enum": ["cli", "gui", "both", "service", "policy"]
+    },
+    "risk": {
+      "type": "string",
+      "enum": ["read_only", "low", "medium", "high", "destructive", "policy_blocked"]
+    },
+    "size": {
+      "type": "string",
+      "enum": ["none", "tiny", "small", "medium", "large", "huge", "unknown"]
+    },
+    "integrationStatus": {
+      "type": "string",
+      "enum": [
+        "shipped",
+        "planned",
+        "candidate",
+        "approved",
+        "rejected",
+        "policy_blocked"
+      ]
+    },
+    "licenseReviewStatus": {
+      "type": "string",
+      "enum": ["reviewed", "pending", "not_required", "blocked"]
+    },
+    "httpsUri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "minLength": 8,
+      "description": "HTTPS documentation or project home page. Not a direct binary download URL."
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "description", "maturity", "tool_ids"],
+      "properties": {
+        "id": { "$ref": "#/$defs/profileId" },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "description": { "$ref": "#/$defs/nonEmptyString" },
+        "maturity": { "$ref": "#/$defs/profileMaturity" },
+        "tool_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "profile_dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/profileId" },
+          "description": "Other profiles whose tool_ids (transitively) may satisfy tool dependency closure for this profile."
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "category",
+        "license",
+        "commercial_use",
+        "redistribution",
+        "official_url",
+        "download_mode",
+        "checksum_required",
+        "architectures",
+        "environment",
+        "cli_or_gui",
+        "risk",
+        "size",
+        "dependencies",
+        "integration_status",
+        "license_review_status",
+        "review_source",
+        "reviewed_at"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "title": { "$ref": "#/$defs/nonEmptyString" },
+        "category": { "$ref": "#/$defs/category" },
+        "license": { "$ref": "#/$defs/license" },
+        "commercial_use": { "$ref": "#/$defs/commercialUse" },
+        "redistribution": { "$ref": "#/$defs/redistribution" },
+        "official_url": { "$ref": "#/$defs/httpsUri" },
+        "download_mode": { "$ref": "#/$defs/downloadMode" },
+        "checksum_required": { "type": "boolean" },
+        "architectures": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/architecture" }
+        },
+        "environment": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/environment" }
+        },
+        "cli_or_gui": { "$ref": "#/$defs/cliOrGui" },
+        "risk": { "$ref": "#/$defs/risk" },
+        "size": { "$ref": "#/$defs/size" },
+        "dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "integration_status": { "$ref": "#/$defs/integrationStatus" },
+        "license_review_status": { "$ref": "#/$defs/licenseReviewStatus" },
+        "review_source": { "$ref": "#/$defs/httpsUri" },
+        "reviewed_at": {
+          "type": ["string", "null"],
+          "description": "UTC calendar date (YYYY-MM-DD) when review completed; null while pending or not required."
+        },
+        "notes": { "type": "string" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "download_mode": {
+                "enum": ["build_time_fetch", "technician_cache", "manual_official"]
+              }
+            },
+            "required": ["download_mode"]
+          },
+          "then": {
+            "properties": {
+              "checksum_required": { "const": true }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "integration_status": { "const": "policy_blocked" }
+            },
+            "required": ["integration_status"]
+          },
+          "then": {
+            "properties": {
+              "risk": { "const": "policy_blocked" },
+              "download_mode": { "const": "none" },
+              "redistribution": { "enum": ["prohibited", "not_applicable"] },
+              "license_review_status": { "const": "blocked" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "download_mode": {
+                "enum": ["bundled_first_party", "winpe_builtin", "none"]
+              }
+            },
+            "required": ["download_mode"]
+          },
+          "then": {
+            "properties": {
+              "checksum_required": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "const": "pending" }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "commercial_use": { "const": "unknown" },
+              "redistribution": { "const": "review_required" },
+              "reviewed_at": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "const": "reviewed" }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "enum": ["not_required", "blocked"] }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": { "type": "null" }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

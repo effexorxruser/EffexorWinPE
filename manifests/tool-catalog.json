@@ -1,0 +1,860 @@
+{
+  "schema_version": 1,
+  "notes": [
+    "Research catalog only. No binaries or direct unapproved downloads are fetched by this file.",
+    "official_url and review_source must be https documentation or project homes, never opaque binary mirrors.",
+    "First-party EffexorWinPE components use MIT per LICENSE. proprietary-effexor is not used.",
+    "license_review_status pending means commercial_use/redistribution are not final decisions.",
+    "Profile maturity release_candidate/released is reserved for payloads whose tools are only shipped or approved.",
+    "See docs/rescue-environment-parity.md for jobs-to-be-done and prioritized gaps.",
+    "Tool dependency closure is transitive: each dependency must appear in the profile tool_ids or via profile_dependencies.",
+    "Microsoft WinPE/ADK component license terms are not assumed from technical docs; keep license_review_status pending until ADK terms are reviewed."
+  ],
+  "profiles": [
+    {
+      "id": "minimal-diagnostics",
+      "title": "Minimal diagnostics",
+      "description": "Read-only inventory, offline preflight, and report export. No third-party tools and no raw destructive utilities.",
+      "maturity": "experimental",
+      "tool_ids": [
+        "effexorwinpe-collector",
+        "effexorwinpe-agent",
+        "effexorwinpe-shell",
+        "winpe-storage-cmdlets"
+      ],
+      "profile_dependencies": []
+    },
+    {
+      "id": "technician-standard",
+      "title": "Technician standard",
+      "description": "Day-to-day repair profile: diagnostics plus planned boot repair, file export, and WinPE builtins. Includes advanced destructive utilities such as diskpart.",
+      "maturity": "conceptual",
+      "tool_ids": [
+        "effexorwinpe-collector",
+        "effexorwinpe-agent",
+        "effexorwinpe-shell",
+        "winpe-storage-cmdlets",
+        "winpe-diskpart",
+        "winpe-bcd-tools",
+        "winpe-dism",
+        "winpe-notepad",
+        "effexor-boot-inspect",
+        "effexor-boot-repair",
+        "effexor-report-export",
+        "microsoft-sfc-offline"
+      ],
+      "profile_dependencies": []
+    },
+    {
+      "id": "data-recovery",
+      "title": "Data recovery",
+      "description": "Adds imaging and carving candidates after license review. Includes systemrescue-live to satisfy ddrescue-linux dependency closure. Binaries stay out of Git until checksum-pinned fetch exists.",
+      "maturity": "conceptual",
+      "tool_ids": [
+        "effexorwinpe-collector",
+        "effexorwinpe-agent",
+        "effexorwinpe-shell",
+        "winpe-storage-cmdlets",
+        "winpe-diskpart",
+        "effexor-report-export",
+        "effexor-file-copy",
+        "testdisk-photorec",
+        "systemrescue-live",
+        "ddrescue-linux",
+        "sevenzip-portable"
+      ],
+      "profile_dependencies": []
+    },
+    {
+      "id": "network-enabled",
+      "title": "Network enabled",
+      "description": "Wired networking helpers and gateway diagnosis upload. No VPN secrets or Wi-Fi credential stores in the image.",
+      "maturity": "conceptual",
+      "tool_ids": [
+        "effexorwinpe-collector",
+        "effexorwinpe-agent",
+        "effexorwinpe-shell",
+        "winpe-networking",
+        "effexor-gateway-client",
+        "winpe-curl-optional"
+      ],
+      "profile_dependencies": []
+    },
+    {
+      "id": "multiboot-extras",
+      "title": "Multiboot extras",
+      "description": "Optional entries beside WinPE on technician media (Linux live, memory test). Not injected into the WinPE WIM by default.",
+      "maturity": "conceptual",
+      "tool_ids": [
+        "effexorwinpe-collector",
+        "systemrescue-live",
+        "memtest86plus",
+        "winpe-dism",
+        "microsoft-windows-setup-media"
+      ],
+      "profile_dependencies": []
+    }
+  ],
+  "tools": [
+    {
+      "id": "effexorwinpe-collector",
+      "title": "EffexorWinPE diagnostic collector",
+      "category": "platform",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "read_only",
+      "size": "small",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Collects hardware, storage, BitLocker availability, firmware mode, BCD paths, and offline Windows installs."
+    },
+    {
+      "id": "effexorwinpe-agent",
+      "title": "EffexorWinPE offline preflight and session agent",
+      "category": "platform",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "read_only",
+      "size": "small",
+      "dependencies": [
+        "effexorwinpe-collector"
+      ],
+      "integration_status": "shipped",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22"
+    },
+    {
+      "id": "effexorwinpe-shell",
+      "title": "EffexorWinPE technician shell",
+      "category": "platform",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "gui",
+      "risk": "low",
+      "size": "small",
+      "dependencies": [
+        "effexorwinpe-collector",
+        "effexorwinpe-agent"
+      ],
+      "integration_status": "shipped",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Launcher and export UI; mutating repairs remain future typed operations."
+    },
+    {
+      "id": "effexor-gateway-client",
+      "title": "Opt-in gateway diagnosis upload",
+      "category": "network",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/gateway.md",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "low",
+      "size": "tiny",
+      "dependencies": [
+        "effexorwinpe-agent",
+        "winpe-networking"
+      ],
+      "integration_status": "shipped",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Requires HTTPS gateway URL, external device token, and --approve-upload. Not interactive remote control."
+    },
+    {
+      "id": "effexor-report-export",
+      "title": "Report and session export",
+      "category": "file_management",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "both",
+      "risk": "low",
+      "size": "tiny",
+      "dependencies": [
+        "effexorwinpe-shell"
+      ],
+      "integration_status": "shipped",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Path policy prefers removable media and blocks careless writes into Windows installs."
+    },
+    {
+      "id": "effexor-boot-inspect",
+      "title": "BCD and boot correlation (planned)",
+      "category": "windows_boot_repair",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/roadmap.md",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "read_only",
+      "size": "tiny",
+      "dependencies": [
+        "effexorwinpe-collector",
+        "winpe-bcd-tools"
+      ],
+      "integration_status": "planned",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "P0 gap: parse BCD objects and correlate with offline Windows installations."
+    },
+    {
+      "id": "effexor-boot-repair",
+      "title": "Typed boot repair operations (planned)",
+      "category": "windows_boot_repair",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/roadmap.md",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "both",
+      "risk": "high",
+      "size": "tiny",
+      "dependencies": [
+        "effexor-boot-inspect",
+        "winpe-bcd-tools"
+      ],
+      "integration_status": "planned",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Must preview exact commands and require technician confirmation; never execute from model output alone."
+    },
+    {
+      "id": "effexor-file-copy",
+      "title": "Guided client file copy (planned)",
+      "category": "data_recovery",
+      "license": "mit",
+      "commercial_use": "allowed",
+      "redistribution": "allowed",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE",
+      "download_mode": "bundled_first_party",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "both",
+      "risk": "medium",
+      "size": "tiny",
+      "dependencies": [
+        "effexor-report-export"
+      ],
+      "integration_status": "planned",
+      "license_review_status": "reviewed",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/LICENSE",
+      "reviewed_at": "2026-07-22",
+      "notes": "Read-mostly copy from client volumes to technician storage with path review."
+    },
+    {
+      "id": "winpe-storage-cmdlets",
+      "title": "WinPE Storage PowerShell cmdlets",
+      "category": "disks_and_partitions",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/winpe-intro",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "read_only",
+      "size": "medium",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Listed for read-only inventory used by the collector. Mutating Storage cmdlets stay outside minimal-diagnostics and require technician confirmation when exposed. ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-diskpart",
+      "title": "diskpart",
+      "category": "disks_and_partitions",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-server/administration/windows-commands/diskpart",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "destructive",
+      "size": "tiny",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Advanced technician profiles only. Destructive operations require future typed wrappers; raw use remains technician-driven. ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-bcd-tools",
+      "title": "bcdedit / bcdboot / bootrec",
+      "category": "windows_boot_repair",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/bcd-boot-options-ref",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "high",
+      "size": "small",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Present when corresponding WinPE optional components are installed in the image build. ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-dism",
+      "title": "DISM",
+      "category": "windows_installation",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/dism-image-management-command-line-options-s14",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "high",
+      "size": "medium",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "microsoft-sfc-offline",
+      "title": "Offline System File Checker (planned orchestration)",
+      "category": "windows_boot_repair",
+      "license": "microsoft-windows",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/winpe-mount-and-customize",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "high",
+      "size": "small",
+      "dependencies": [
+        "winpe-dism"
+      ],
+      "integration_status": "planned",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-networking",
+      "title": "WinPE networking stack",
+      "category": "network",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/winpe-network-shortcuts",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "low",
+      "size": "medium",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Wired Ethernet preferred; Wi-Fi is not an MVP dependency (ADR 0001). ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-curl-optional",
+      "title": "Optional curl in WinPE (candidate)",
+      "category": "network",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-server/administration/windows-commands/curl",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "low",
+      "size": "small",
+      "dependencies": [
+        "winpe-networking"
+      ],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Useful for fetching checksum-pinned packages to technician cache; not a substitute for the gateway client. ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "winpe-notepad",
+      "title": "Notepad",
+      "category": "file_management",
+      "license": "microsoft-winpe-component",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows-hardware/manufacture/desktop/winpe-intro",
+      "download_mode": "winpe_builtin",
+      "checksum_required": false,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe"
+      ],
+      "cli_or_gui": "gui",
+      "risk": "medium",
+      "size": "tiny",
+      "dependencies": [],
+      "integration_status": "shipped",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "microsoft-windows-setup-media",
+      "title": "Official Windows installation media",
+      "category": "windows_installation",
+      "license": "microsoft-windows",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.microsoft.com/software-download/windows11",
+      "download_mode": "manual_official",
+      "checksum_required": true,
+      "architectures": [
+        "amd64",
+        "arm64"
+      ],
+      "environment": [
+        "full_windows",
+        "winpe"
+      ],
+      "cli_or_gui": "both",
+      "risk": "destructive",
+      "size": "huge",
+      "dependencies": [
+        "winpe-dism"
+      ],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows-hardware/get-started/adk-install",
+      "reviewed_at": null,
+      "notes": "Technician-supplied official ISO only. Never commit ISOs or product keys. Final redistribution terms remain under review for rescue-media workflows. ADK/WinPE redistribution and commercial-use terms are not confirmed from command documentation alone; license review remains pending against ADK/WinPE license terms."
+    },
+    {
+      "id": "testdisk-photorec",
+      "title": "TestDisk & PhotoRec",
+      "category": "data_recovery",
+      "license": "gpl-2.0",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.cgsecurity.org/wiki/TestDisk",
+      "download_mode": "technician_cache",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe",
+        "full_windows",
+        "linux_live"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "high",
+      "size": "small",
+      "dependencies": [],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.cgsecurity.org/wiki/TestDisk",
+      "reviewed_at": null,
+      "notes": "FOSS recovery candidate. Confirm WinPE runtime needs and pin checksums before any profile ships the binary."
+    },
+    {
+      "id": "ddrescue-linux",
+      "title": "GNU ddrescue (Linux live)",
+      "category": "backup_and_restore",
+      "license": "gpl-2.0",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.gnu.org/software/ddrescue/",
+      "download_mode": "manual_official",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "linux_live"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "destructive",
+      "size": "tiny",
+      "dependencies": [
+        "systemrescue-live"
+      ],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.gnu.org/software/ddrescue/",
+      "reviewed_at": null,
+      "notes": "Intended via multiboot Linux environment rather than inside WinPE."
+    },
+    {
+      "id": "sevenzip-portable",
+      "title": "7-Zip",
+      "category": "file_management",
+      "license": "lgpl-2.1",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.7-zip.org/",
+      "download_mode": "technician_cache",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe",
+        "full_windows"
+      ],
+      "cli_or_gui": "both",
+      "risk": "low",
+      "size": "small",
+      "dependencies": [],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.7-zip.org/license.txt",
+      "reviewed_at": null
+    },
+    {
+      "id": "systemrescue-live",
+      "title": "SystemRescue live environment",
+      "category": "hardware_diagnostics",
+      "license": "gpl-2.0",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.system-rescue.org/",
+      "download_mode": "manual_official",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "linux_live"
+      ],
+      "cli_or_gui": "both",
+      "risk": "medium",
+      "size": "large",
+      "dependencies": [],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.system-rescue.org/",
+      "reviewed_at": null,
+      "notes": "Multiboot extras only; aligns with roadmap Later item for SystemRescue on technician media."
+    },
+    {
+      "id": "memtest86plus",
+      "title": "Memtest86+",
+      "category": "hardware_diagnostics",
+      "license": "gpl-2.0",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.memtest.org/",
+      "download_mode": "manual_official",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "uefi_app",
+        "linux_live"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "low",
+      "size": "tiny",
+      "dependencies": [],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.memtest.org/",
+      "reviewed_at": null
+    },
+    {
+      "id": "clamav-portable",
+      "title": "ClamAV portable scanner (candidate)",
+      "category": "malware_scanning",
+      "license": "gpl-2.0",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://www.clamav.net/",
+      "download_mode": "technician_cache",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "winpe",
+        "full_windows"
+      ],
+      "cli_or_gui": "cli",
+      "risk": "medium",
+      "size": "large",
+      "dependencies": [],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://www.clamav.net/",
+      "reviewed_at": null,
+      "notes": "Definitions must be refreshed out-of-band. No automatic remediation."
+    },
+    {
+      "id": "oem-firmware-updater-policy",
+      "title": "Per-OEM firmware updater policy",
+      "category": "firmware_and_uefi",
+      "license": "not_applicable",
+      "commercial_use": "not_applicable",
+      "redistribution": "not_applicable",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/rescue-environment-parity.md",
+      "download_mode": "none",
+      "checksum_required": false,
+      "architectures": [
+        "any"
+      ],
+      "environment": [
+        "any"
+      ],
+      "cli_or_gui": "policy",
+      "risk": "read_only",
+      "size": "none",
+      "dependencies": [],
+      "integration_status": "planned",
+      "license_review_status": "not_required",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/rescue-environment-parity.md",
+      "reviewed_at": null,
+      "notes": "Policy-only template. Each concrete OEM updater must be a separate catalog id with its own official_url, checksum, and license review. Do not use a generic Microsoft Surface URL as a stand-in."
+    },
+    {
+      "id": "remote-assist-technician-owned",
+      "title": "Technician-owned remote assist client",
+      "category": "remote_support",
+      "license": "proprietary-vendor",
+      "commercial_use": "unknown",
+      "redistribution": "review_required",
+      "official_url": "https://learn.microsoft.com/windows/client-management/quick-assist",
+      "download_mode": "manual_official",
+      "checksum_required": true,
+      "architectures": [
+        "amd64"
+      ],
+      "environment": [
+        "full_windows"
+      ],
+      "cli_or_gui": "gui",
+      "risk": "high",
+      "size": "medium",
+      "dependencies": [
+        "winpe-networking"
+      ],
+      "integration_status": "candidate",
+      "license_review_status": "pending",
+      "review_source": "https://learn.microsoft.com/windows/client-management/quick-assist",
+      "reviewed_at": null,
+      "notes": "Prefer full Windows portable environment. Do not bake vendor credentials or unattended reverse tunnels into the ISO."
+    },
+    {
+      "id": "microsoft-account-recovery-checklist",
+      "title": "Microsoft account and BitLocker recovery checklist",
+      "category": "password_account_recovery",
+      "license": "not_applicable",
+      "commercial_use": "not_applicable",
+      "redistribution": "not_applicable",
+      "official_url": "https://support.microsoft.com/account-billing",
+      "download_mode": "none",
+      "checksum_required": false,
+      "architectures": [
+        "any"
+      ],
+      "environment": [
+        "any"
+      ],
+      "cli_or_gui": "policy",
+      "risk": "read_only",
+      "size": "none",
+      "dependencies": [],
+      "integration_status": "planned",
+      "license_review_status": "not_required",
+      "review_source": "https://support.microsoft.com/account-billing",
+      "reviewed_at": null,
+      "notes": "First-party policy/docs only. Guides lawful recovery when the owner has Microsoft account or BitLocker keys."
+    },
+    {
+      "id": "offline-password-bypass-tools",
+      "title": "Offline Windows password bypass utilities",
+      "category": "password_account_recovery",
+      "license": "unknown",
+      "commercial_use": "prohibited",
+      "redistribution": "prohibited",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/rescue-environment-parity.md",
+      "download_mode": "none",
+      "checksum_required": false,
+      "architectures": [
+        "any"
+      ],
+      "environment": [
+        "any"
+      ],
+      "cli_or_gui": "policy",
+      "risk": "policy_blocked",
+      "size": "none",
+      "dependencies": [],
+      "integration_status": "policy_blocked",
+      "license_review_status": "blocked",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/docs/rescue-environment-parity.md",
+      "reviewed_at": null,
+      "notes": "Explicitly blocked. Documents Strelec-class password reset packs that must not be copied or shipped."
+    },
+    {
+      "id": "unlicensed-activation-tools",
+      "title": "Windows activation cracks and keygens",
+      "category": "windows_installation",
+      "license": "unknown",
+      "commercial_use": "prohibited",
+      "redistribution": "prohibited",
+      "official_url": "https://github.com/effexorxruser/EffexorWinPE/blob/main/SECURITY.md",
+      "download_mode": "none",
+      "checksum_required": false,
+      "architectures": [
+        "any"
+      ],
+      "environment": [
+        "any"
+      ],
+      "cli_or_gui": "policy",
+      "risk": "policy_blocked",
+      "size": "none",
+      "dependencies": [],
+      "integration_status": "policy_blocked",
+      "license_review_status": "blocked",
+      "review_source": "https://github.com/effexorxruser/EffexorWinPE/blob/main/SECURITY.md",
+      "reviewed_at": null,
+      "notes": "Blocked. Official Microsoft licensing only."
+    }
+  ]
+}
