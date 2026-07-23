@@ -1,0 +1,10 @@
+; Optional WinPE shell launcher template for EffexorWinPE.
+; The default image build starts effexorwinpe-shell.exe from startnet.cmd and
+; keeps cmd.exe available after the GUI exits. Copy this file to
+; Windows\System32\winpeshl.ini only when intentionally replacing the WinPE
+; shell launcher instead of using startnet.cmd.
+;
+; Branding: EffexorWinPE
+
+[LaunchApps]
+%SYSTEMDRIVE%\EffexorWinPE\bin\effexorwinpe-shell.exe

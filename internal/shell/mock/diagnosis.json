@@ -1,0 +1,47 @@
+{
+  "schema_version": "0.2.0",
+  "report_id": "mockreport00000001",
+  "generated_at": "2026-07-22T18:00:05Z",
+  "mode": "offline_preflight",
+  "summary": {
+    "headline": "Offline preflight completed with warnings",
+    "highest_severity": "warning",
+    "finding_count": 2
+  },
+  "findings": [
+    {
+      "id": "bitlocker.provider_unavailable",
+      "title": "BitLocker provider unavailable",
+      "severity": "warning",
+      "confidence": "high",
+      "rationale": "bitlocker_inventory.status is unavailable",
+      "evidence_refs": ["storage.bitlocker_inventory.status"],
+      "source_refs": []
+    },
+    {
+      "id": "network.ethernet_disconnected",
+      "title": "Ethernet media disconnected",
+      "severity": "info",
+      "confidence": "medium",
+      "rationale": "Primary NIC reports media_disconnected",
+      "evidence_refs": ["hardware.network_adapters[0].status"],
+      "source_refs": []
+    }
+  ],
+  "questions": [],
+  "next_steps": [
+    {
+      "id": "export.report",
+      "title": "Export diagnostic report",
+      "operation": "export_report",
+      "risk": "read_only",
+      "requires_confirmation": false,
+      "rationale": "Preserve collector and diagnosis JSON for the technician"
+    }
+  ],
+  "limitations": [
+    "Offline preflight does not contact the model gateway",
+    "SMART counters may be null in WinPE"
+  ],
+  "sources": []
+}
