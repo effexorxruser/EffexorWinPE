@@ -11,7 +11,23 @@ import (
 
 func TestWriteCreatesValidJSON(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nested", "report.json")
-	want := diagnostics.Report{SchemaVersion: diagnostics.SchemaVersion, ReportID: "test-id"}
+	want := diagnostics.Report{
+		SchemaVersion: diagnostics.SchemaVersion,
+		ReportID:      "test-id",
+		Hardware:      diagnostics.Hardware{FirmwareMode: "unknown", NetworkAdapters: []diagnostics.NetworkAdapter{}},
+		Storage: diagnostics.Storage{
+			Disks:            []diagnostics.Disk{},
+			DriveHealth:      []diagnostics.DriveHealth{},
+			Partitions:       []diagnostics.Partition{},
+			BitLockerVolumes: []diagnostics.BitLockerVolume{},
+			BitLockerInventory: diagnostics.BitLockerInventory{
+				Status: diagnostics.BitLockerStatusOK,
+			},
+		},
+		Boot:          diagnostics.Boot{FirmwareMode: "unknown", BCDStores: []diagnostics.BCDStore{}},
+		Installations: []diagnostics.Installation{},
+		Checks:        []diagnostics.Check{},
+	}
 	if err := Write(path, want, true); err != nil {
 		t.Fatalf("Write() error = %v", err)
 	}

@@ -13,7 +13,11 @@ func collectPlatform() (diagnostics.Hardware, diagnostics.Storage, diagnostics.B
 		Disks:            []diagnostics.Disk{},
 		DriveHealth:      []diagnostics.DriveHealth{},
 		Partitions:       []diagnostics.Partition{},
-		BitLockerVolumes: []diagnostics.BitLockerVolume{},
+		BitLockerVolumes: nil,
+		BitLockerInventory: diagnostics.BitLockerInventory{
+			Status: diagnostics.BitLockerStatusUnavailable,
+			Error:  "Windows BitLocker providers are available only on Windows or WinPE",
+		},
 	}
 	boot := diagnostics.Boot{FirmwareMode: "unknown", BCDStores: []diagnostics.BCDStore{}}
 	checks := []diagnostics.Check{{

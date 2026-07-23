@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.2.0",
+  "report_id": "legacyfixture000001",
+  "collected_at": "2026-07-22T12:00:00Z",
+  "collector": {
+    "name": "effexorwinpe-collector",
+    "version": "test-fixture"
+  },
+  "environment": {
+    "runtime_os": "windows",
+    "runtime_arch": "amd64"
+  },
+  "hardware": {
+    "firmware_mode": "uefi",
+    "system": {
+      "manufacturer": "ASUSTeK COMPUTER INC.",
+      "model": "Example-Notebook"
+    },
+    "processor": {
+      "name": "Example CPU",
+      "cores": 4,
+      "logical_processors": 8
+    },
+    "memory": {
+      "total_physical_bytes": 8589934592
+    },
+    "network_adapters": [
+      {
+        "name": "Realtek PCIe GbE Family Controller",
+        "description": "Realtek PCIe GbE Family Controller",
+        "status": "7"
+      }
+    ]
+  },
+  "storage": {
+    "disks": [
+      {
+        "number": 0,
+        "friendly_name": "Example SATA HDD",
+        "bus_type": "SATA",
+        "size_bytes": 1000204886016,
+        "partition_style": "GPT",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": false,
+        "is_system": false
+      },
+      {
+        "number": 1,
+        "friendly_name": "Example NVMe SSD",
+        "bus_type": "NVMe",
+        "size_bytes": 512110190592,
+        "partition_style": "GPT",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": true,
+        "is_system": true
+      },
+      {
+        "number": 2,
+        "friendly_name": "Example USB Flash",
+        "bus_type": "USB",
+        "size_bytes": 31004246016,
+        "partition_style": "MBR",
+        "health_status": "Healthy",
+        "operational_status": "Online",
+        "is_boot": false,
+        "is_system": false
+      }
+    ],
+    "drive_health": [
+      {
+        "device_id": "0",
+        "friendly_name": "Example SATA HDD",
+        "media_type": "HDD",
+        "health_status": "Healthy",
+        "temperature_celsius": 34,
+        "power_on_hours": 12000,
+        "read_errors_total": 0,
+        "write_errors_total": 0
+      },
+      {
+        "device_id": "1",
+        "friendly_name": "Example NVMe SSD",
+        "media_type": "SSD",
+        "health_status": "Healthy",
+        "temperature_celsius": 41,
+        "wear_percent": 3,
+        "power_on_hours": 800,
+        "read_errors_total": 0,
+        "write_errors_total": 0
+      },
+      {
+        "device_id": "2",
+        "friendly_name": "Example USB Flash",
+        "media_type": "Unspecified",
+        "health_status": "Healthy",
+        "temperature_celsius": 0,
+        "wear_percent": 0
+      }
+    ],
+    "partitions": [
+      {
+        "disk_number": 1,
+        "partition_number": 1,
+        "drive_letter": "D",
+        "size_bytes": 510000000000,
+        "type": "Basic",
+        "gpt_type": "{ebd0a0a2-b9e5-4433-87c0-68b6b72699c7}",
+        "is_active": false
+      }
+    ],
+    "bitlocker_volumes": []
+  },
+  "boot": {
+    "firmware_mode": "uefi",
+    "bcd_stores": [
+      {
+        "path": "S:\\EFI\\Microsoft\\Boot\\BCD",
+        "kind": "uefi"
+      }
+    ]
+  },
+  "windows_installations": [
+    {
+      "root": "D:\\",
+      "system_hive": "D:\\Windows\\System32\\config\\SYSTEM",
+      "software_hive": "D:\\Windows\\System32\\config\\SOFTWARE",
+      "version": {
+        "product_name": "Windows 10 Pro",
+        "display_version": "22H2",
+        "edition_id": "Professional",
+        "installation_type": "Client",
+        "build": "22621.1848"
+      }
+    },
+    {
+      "root": "X:\\",
+      "system_hive": "X:\\Windows\\System32\\config\\SYSTEM",
+      "software_hive": "X:\\Windows\\System32\\config\\SOFTWARE",
+      "version": {
+        "product_name": "Windows 10 Enterprise",
+        "display_version": "",
+        "edition_id": "Enterprise",
+        "installation_type": "Client",
+        "build": "26100.1"
+      }
+    }
+  ],
+  "checks": [
+    {
+      "id": "collector.runtime",
+      "status": "ok",
+      "summary": "Collector is running on windows/amd64"
+    },
+    {
+      "id": "platform.inventory.source.1",
+      "status": "unknown",
+      "summary": "BitLocker inventory is unavailable: Index operation failed; the array index evaluated to null."
+    },
+    {
+      "id": "windows.installations",
+      "status": "ok",
+      "summary": "Detected 2 Windows installation(s)"
+    }
+  ],
+  "privacy": {
+    "contains_personal_data": false,
+    "excluded_by_default": [
+      "hostname",
+      "usernames",
+      "file_contents",
+      "browser_data",
+      "wifi_profiles",
+      "network_addresses"
+    ]
+  }
+}

@@ -10,8 +10,8 @@ Bootstrap/MVP foundation:
 
 - reproducible WinPE build skeleton;
 - dependency-free Go diagnostic collector;
-- versioned JSON diagnostic contract;
-- read-only hardware, storage reliability/SMART counters, BitLocker, firmware, BCD, and offline Windows inventory;
+- versioned JSON diagnostic contract (`diagnostic-report` 1.3.0);
+- read-only hardware, storage reliability/SMART counters, BitLocker availability, firmware, BCD, and offline Windows inventory (running WinPE excluded);
 - offline evidence-backed diagnostic preflight with confidence, follow-up questions, limitations, and typed read-only next steps;
 - resumable diagnostic sessions with technician symptoms, answers, and a compact audit timeline;
 - an opt-in HTTPS client for the model-backed gateway, with a removable device token and a separate upload approval flag;

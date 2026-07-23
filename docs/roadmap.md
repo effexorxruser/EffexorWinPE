@@ -14,6 +14,7 @@
 - [ ] Verify UEFI boot on a virtual machine and two physical PCs.
 - [x] Implement inventory for disks, reliability counters, partitions, BitLocker state, firmware mode, memory, CPU, and network adapters.
 - [x] Implement offline Windows version detection and visible BCD-store discovery.
+- [x] Fix first physical smoke-test findings: exclude runtime WinPE from offline installs, nullable reliability counters, BitLocker availability status, Windows 11 product-name normalization, and human-readable NIC status.
 - [ ] Validate every inventory source in the first WinPE build and record hardware-specific gaps.
 - [ ] Inspect BCD entries and correlate them with detected Windows installations.
 - [ ] Export JSON and readable HTML reports to technician storage.

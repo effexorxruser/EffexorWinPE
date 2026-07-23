@@ -1,6 +1,8 @@
 package gateway
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +28,15 @@ func testDiagnosisRequest(t *testing.T) DiagnosisRequest {
 				RuntimeOS: "windows",
 				Hostname:  "client-laptop",
 			},
-			Storage: diagnostics.Storage{Disks: []diagnostics.Disk{{Number: 0, HealthStatus: "Healthy"}}},
+			Storage: diagnostics.Storage{
+				Disks:            []diagnostics.Disk{{Number: 0, HealthStatus: "Healthy"}},
+				DriveHealth:      []diagnostics.DriveHealth{},
+				Partitions:       []diagnostics.Partition{},
+				BitLockerVolumes: []diagnostics.BitLockerVolume{},
+				BitLockerInventory: diagnostics.BitLockerInventory{
+					Status: diagnostics.BitLockerStatusOK,
+				},
+			},
 			Checks:  []diagnostics.Check{{ID: "collector.runtime", Status: "ok", Summary: "running"}},
 			Privacy: diagnostics.Privacy{ContainsPersonalData: true, ExcludedByDefault: []string{"hostname"}},
 		},
@@ -119,6 +129,36 @@ func TestValidateOnlineAssessmentAcceptsGroundedReadOnlyResult(t *testing.T) {
 	}
 	if err := ValidateOnlineAssessment(testOnlineAssessment(request), request); err != nil {
 		t.Fatalf("ValidateOnlineAssessment() error = %v", err)
+	}
+}
+
+func TestValidateDiagnosisRequestAcceptsMigratedLegacyReport(t *testing.T) {
+	raw, err := os.ReadFile("../diagnostics/testdata/physical-smoke-legacy-1.2.0.json")
+	if err != nil {
+		t.Fatalf("read legacy fixture: %v", err)
+	}
+	var report diagnostics.Report
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("Unmarshal legacy report: %v", err)
+	}
+	if report.SchemaVersion != diagnostics.SchemaVersion {
+		t.Fatalf("migrated schema = %q, want %q", report.SchemaVersion, diagnostics.SchemaVersion)
+	}
+	if report.Storage.BitLockerInventory.Status != diagnostics.BitLockerStatusUnavailable || report.Storage.BitLockerVolumes != nil {
+		t.Fatalf("legacy empty BitLocker must migrate to unavailable/null, got %+v %#v", report.Storage.BitLockerInventory, report.Storage.BitLockerVolumes)
+	}
+	now := time.Unix(100, 0).UTC()
+	value, err := session.New(report.ReportID, now)
+	if err != nil {
+		t.Fatalf("session.New() error = %v", err)
+	}
+	request := DiagnosisRequest{
+		DiagnosticReport:   report,
+		Session:            value,
+		TechnicianApproved: true,
+	}
+	if err := ValidateDiagnosisRequest(request); err != nil {
+		t.Fatalf("ValidateDiagnosisRequest() error = %v", err)
 	}
 }
 

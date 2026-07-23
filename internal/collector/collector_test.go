@@ -29,8 +29,17 @@ func TestCollectProducesVersionedReport(t *testing.T) {
 	if report.Hardware.FirmwareMode == "" {
 		t.Fatal("firmware mode is empty")
 	}
-	if report.Storage.Disks == nil || report.Storage.DriveHealth == nil || report.Storage.Partitions == nil || report.Storage.BitLockerVolumes == nil {
+	if report.Storage.Disks == nil || report.Storage.DriveHealth == nil || report.Storage.Partitions == nil {
 		t.Fatal("storage arrays must be initialized")
+	}
+	if report.Storage.BitLockerInventory.Status == "" {
+		t.Fatal("bitlocker inventory status must be set")
+	}
+	if report.Storage.BitLockerInventory.Status == diagnostics.BitLockerStatusUnavailable && report.Storage.BitLockerVolumes != nil {
+		t.Fatal("unavailable BitLocker inventory must not serialize as an empty volume list")
+	}
+	if report.Storage.BitLockerInventory.Status == diagnostics.BitLockerStatusOK && report.Storage.BitLockerVolumes == nil {
+		t.Fatal("successful BitLocker inventory must use an explicit volume list")
 	}
 	if report.Boot.BCDStores == nil {
 		t.Fatal("BCD stores array must be initialized")

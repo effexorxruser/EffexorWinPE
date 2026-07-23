@@ -156,13 +156,7 @@ func readReport(path string) (diagnostics.Report, error) {
 		defer file.Close()
 		reader = file
 	}
-	var report diagnostics.Report
-	decoder := json.NewDecoder(reader)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&report); err != nil {
-		return diagnostics.Report{}, err
-	}
-	return report, nil
+	return diagnostics.DecodeReport(reader)
 }
 
 func openSession(path, reportID string, now time.Time) (session.Session, error) {

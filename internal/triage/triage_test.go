@@ -1,6 +1,9 @@
 package triage
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -42,7 +45,8 @@ func TestAnalyzeFlagsUnhealthyStorageWithoutWriteActions(t *testing.T) {
 
 func TestAnalyzeDoesNotCallLockedBitLockerAFault(t *testing.T) {
 	report := baseReport()
-	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{MountPoint: "C:", LockStatus: "Locked"}}
+	lock := "Locked"
+	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{MountPoint: "C:", LockStatus: &lock}}
 
 	assessment, err := Analyze(report, time.Now())
 	if err != nil {
@@ -85,6 +89,117 @@ func TestAnalyzeHealthyEvidenceStaysLowConfidence(t *testing.T) {
 	}
 }
 
+func TestAnalyzePartialBitLockerCreatesSourcesIncompleteWithoutHealthyClaim(t *testing.T) {
+	report := baseReport()
+	report.Storage.BitLockerVolumes = []diagnostics.BitLockerVolume{{
+		MountPoint: "C:",
+	}}
+	report.Storage.BitLockerInventory = diagnostics.BitLockerInventory{
+		Status: diagnostics.BitLockerStatusPartial,
+		Error:  "One or more BitLocker volume fields were incomplete",
+	}
+	report.Checks = []diagnostics.Check{{
+		ID:      "storage.bitlocker_inventory",
+		Status:  "unknown",
+		Summary: "BitLocker inventory is partial: One or more BitLocker volume fields were incomplete",
+	}}
+	assessment, err := Analyze(report, time.Now())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if !hasFinding(assessment, "evidence.sources-incomplete") {
+		t.Fatal("partial BitLocker must create evidence.sources-incomplete")
+	}
+	if hasFinding(assessment, "preflight.no-obvious-fault") {
+		t.Fatal("partial BitLocker must not allow preflight.no-obvious-fault")
+	}
+}
+
+func TestAnalyzeMigratedLegacyPhysicalSmokeReport(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "diagnostics", "testdata", "physical-smoke-legacy-1.2.0.json"))
+	if err != nil {
+		t.Fatalf("read legacy fixture: %v", err)
+	}
+	var report diagnostics.Report
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("Unmarshal legacy report: %v", err)
+	}
+	if report.SchemaVersion != diagnostics.SchemaVersion {
+		t.Fatalf("schema_version = %q, want migrated %q", report.SchemaVersion, diagnostics.SchemaVersion)
+	}
+	assessment, err := Analyze(report, time.Unix(1700000000, 0).UTC())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if !hasFinding(assessment, "windows.multiple-installations") {
+		t.Fatal("legacy fixture still contains two recorded installs; multiple-installations should remain")
+	}
+	if !hasFinding(assessment, "evidence.sources-incomplete") {
+		t.Fatal("legacy unavailable BitLocker signal must keep sources-incomplete after migration")
+	}
+	for _, step := range assessment.NextSteps {
+		if step.Risk != diagnosis.RiskReadOnly || step.RequiresConfirmation {
+			t.Fatalf("offline next step is not read-only: %+v", step)
+		}
+	}
+}
+
+func TestAnalyzePhysicalSmokeClassDoesNotFlagRuntimeWinPEAsSecondInstall(t *testing.T) {
+	report := loadPhysicalSmokeFixture(t)
+	assessment, err := Analyze(report, time.Unix(1700000000, 0).UTC())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if hasFinding(assessment, "windows.multiple-installations") {
+		t.Fatal("runtime WinPE must not create windows.multiple-installations")
+	}
+	if !hasFinding(assessment, "evidence.sources-incomplete") {
+		t.Fatal("unavailable BitLocker provider must keep evidence.sources-incomplete")
+	}
+	if assessment.Summary.HighestSeverity != diagnosis.SeverityUnknown {
+		t.Fatalf("highest severity = %q, want unknown when sources are incomplete", assessment.Summary.HighestSeverity)
+	}
+	for _, step := range assessment.NextSteps {
+		if step.Risk != diagnosis.RiskReadOnly || step.RequiresConfirmation {
+			t.Fatalf("offline next step is not read-only: %+v", step)
+		}
+	}
+}
+
+func TestAnalyzeMultipleRealInstallationsStillFlagsTargetSelection(t *testing.T) {
+	report := baseReport()
+	report.Installations = []diagnostics.Installation{
+		{Root: "C:\\"},
+		{Root: "D:\\"},
+	}
+	assessment, err := Analyze(report, time.Now())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if !hasFinding(assessment, "windows.multiple-installations") {
+		t.Fatal("missing multiple-installations finding for two real offline installs")
+	}
+}
+
+func TestAnalyzeDoesNotTreatNullWearAsHealthyProof(t *testing.T) {
+	report := baseReport()
+	report.Storage.DriveHealth = []diagnostics.DriveHealth{{
+		DeviceID:     "usb0",
+		FriendlyName: "USB Flash",
+		HealthStatus: "Healthy",
+	}}
+	assessment, err := Analyze(report, time.Now())
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if hasFinding(assessment, "storage.drive.usb0.wear") {
+		t.Fatal("null wear must not create a wear finding")
+	}
+	if !hasFinding(assessment, "preflight.no-obvious-fault") {
+		t.Fatal("missing metrics must not invent a stronger healthy claim than the conservative default")
+	}
+}
+
 func baseReport() diagnostics.Report {
 	return diagnostics.Report{
 		SchemaVersion: diagnostics.SchemaVersion,
@@ -95,6 +210,9 @@ func baseReport() diagnostics.Report {
 			DriveHealth:      []diagnostics.DriveHealth{},
 			Partitions:       []diagnostics.Partition{},
 			BitLockerVolumes: []diagnostics.BitLockerVolume{},
+			BitLockerInventory: diagnostics.BitLockerInventory{
+				Status: diagnostics.BitLockerStatusOK,
+			},
 		},
 		Boot:          diagnostics.Boot{FirmwareMode: "uefi", BCDStores: []diagnostics.BCDStore{{Path: "S:\\EFI\\Microsoft\\Boot\\BCD", Kind: "uefi"}}},
 		Installations: []diagnostics.Installation{{Root: "C:\\"}},
@@ -118,4 +236,24 @@ func hasQuestion(assessment diagnosis.Assessment, id string) bool {
 		}
 	}
 	return false
+}
+
+func loadPhysicalSmokeFixture(t *testing.T) diagnostics.Report {
+	t.Helper()
+	path := filepath.Join("testdata", "physical-smoke-uefi-asus-like.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	var report diagnostics.Report
+	if err := json.Unmarshal(raw, &report); err != nil {
+		t.Fatalf("decode fixture: %v", err)
+	}
+	if len(report.Installations) != 1 || report.Installations[0].Root != `D:\` {
+		t.Fatalf("fixture must model one offline Windows root on D:\\, got %+v", report.Installations)
+	}
+	if report.Storage.BitLockerVolumes != nil || report.Storage.BitLockerInventory.Status != diagnostics.BitLockerStatusUnavailable {
+		t.Fatal("fixture must model unavailable BitLocker as null volumes + unavailable status")
+	}
+	return report
 }

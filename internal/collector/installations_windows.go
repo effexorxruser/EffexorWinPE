@@ -18,17 +18,18 @@ func findWindowsInstallations() []diagnostics.Installation {
 	for letter := 'C'; letter <= 'Z'; letter++ {
 		root := fmt.Sprintf("%c:\\", letter)
 		hive := filepath.Join(root, "Windows", "System32", "config", "SYSTEM")
-		if info, err := os.Stat(hive); err == nil && !info.IsDir() {
-			softwareHive := filepath.Join(root, "Windows", "System32", "config", "SOFTWARE")
-			installations = append(installations, diagnostics.Installation{
-				Root:         root,
-				SystemHive:   hive,
-				SoftwareHive: softwareHive,
-				Version:      readOfflineWindowsVersion(softwareHive, letter),
-			})
+		if info, err := os.Stat(hive); err != nil || info.IsDir() {
+			continue
 		}
+		softwareHive := filepath.Join(root, "Windows", "System32", "config", "SOFTWARE")
+		installations = append(installations, diagnostics.Installation{
+			Root:         root,
+			SystemHive:   hive,
+			SoftwareHive: softwareHive,
+			Version:      readOfflineWindowsVersion(softwareHive, letter),
+		})
 	}
-	return installations
+	return filterOfflineWindowsInstallations(installations, currentRuntimeWindowsRoot(), currentEnvironmentIsWinPE(), pathExists)
 }
 
 func readOfflineWindowsVersion(softwareHive string, driveLetter rune) *diagnostics.WindowsVersion {
@@ -64,17 +65,19 @@ func readOfflineWindowsVersion(softwareHive string, driveLetter rune) *diagnosti
 			build += "." + ubr
 		}
 	}
-	version := &diagnostics.WindowsVersion{
-		ProductName:      read("ProductName"),
+	rawProductName := read("ProductName")
+	version := diagnostics.NormalizeWindowsVersion(diagnostics.WindowsVersion{
+		RawProductName:   rawProductName,
+		ProductName:      rawProductName,
 		DisplayVersion:   read("DisplayVersion"),
 		EditionID:        read("EditionID"),
 		InstallationType: read("InstallationType"),
 		Build:            build,
-	}
-	if version.ProductName == "" && version.DisplayVersion == "" && version.EditionID == "" && version.InstallationType == "" && version.Build == "" {
+	})
+	if version.RawProductName == "" && version.ProductName == "" && version.DisplayVersion == "" && version.EditionID == "" && version.InstallationType == "" && version.Build == "" {
 		return nil
 	}
-	return version
+	return &version
 }
 
 func decodeWindowsCommandOutput(output []byte) string {
