@@ -1,0 +1,238 @@
+{
+  "id": "no-dhcp",
+  "description": "Disconnected NIC leads to a multi-step network evidence request.",
+  "report": {
+    "schema_version": "1.3.0",
+    "report_id": "report-eval-no-dhcp",
+    "collected_at": "2026-07-23T10:00:00Z",
+    "collector": {
+      "name": "effexorwinpe-collector",
+      "version": "eval-fixture"
+    },
+    "environment": {
+      "runtime_os": "windows",
+      "runtime_arch": "amd64"
+    },
+    "hardware": {
+      "firmware_mode": "uefi",
+      "system": {
+        "manufacturer": "Example OEM",
+        "model": "Anon-Notebook"
+      },
+      "processor": {
+        "name": "Example CPU",
+        "cores": 4,
+        "logical_processors": 8
+      },
+      "memory": {
+        "total_physical_bytes": 17179869184
+      },
+      "network_adapters": [
+        {
+          "name": "Example NIC",
+          "status": "media_disconnected",
+          "status_code": 7
+        }
+      ]
+    },
+    "storage": {
+      "disks": [
+        {
+          "number": 0,
+          "friendly_name": "Example NVMe",
+          "bus_type": "NVMe",
+          "size_bytes": 549755813888,
+          "partition_style": "GPT",
+          "health_status": "Healthy",
+          "operational_status": "Online",
+          "is_boot": false,
+          "is_system": false
+        }
+      ],
+      "drive_health": [
+        {
+          "device_id": "0",
+          "friendly_name": "Example NVMe",
+          "media_type": "SSD",
+          "health_status": "Healthy",
+          "temperature_celsius": 38,
+          "wear_percent": 3,
+          "power_on_hours": 1200,
+          "read_errors_total": 0,
+          "write_errors_total": 0
+        }
+      ],
+      "partitions": [
+        {
+          "disk_number": 0,
+          "partition_number": 3,
+          "drive_letter": "C",
+          "size_bytes": 429496729600,
+          "type": "Basic",
+          "is_active": false
+        }
+      ],
+      "bitlocker_volumes": [],
+      "bitlocker_inventory": {
+        "status": "ok"
+      }
+    },
+    "boot": {
+      "firmware_mode": "uefi",
+      "bcd_stores": [
+        {
+          "path": "\\EFI\\Microsoft\\Boot\\BCD",
+          "kind": "system"
+        }
+      ]
+    },
+    "windows_installations": [
+      {
+        "root": "C:\\Windows",
+        "system_hive": "C:\\Windows\\System32\\config\\SYSTEM",
+        "software_hive": "C:\\Windows\\System32\\config\\SOFTWARE",
+        "version": {
+          "product_name": "Windows 11 Pro",
+          "display_version": "24H2",
+          "build": "26100"
+        }
+      }
+    ],
+    "checks": [
+      {
+        "id": "collector.runtime",
+        "status": "ok",
+        "summary": "collector running"
+      }
+    ],
+    "privacy": {
+      "contains_personal_data": false,
+      "excluded_by_default": [
+        "hostname",
+        "user profiles"
+      ]
+    }
+  },
+  "session": {
+    "schema_version": "0.2.0",
+    "session_id": "session-report-eval-no-dhcp",
+    "report_id": "report-eval-no-dhcp",
+    "created_at": "2026-07-23T10:00:00Z",
+    "updated_at": "2026-07-23T10:00:00Z",
+    "symptoms": [],
+    "answers": [],
+    "events": [
+      {
+        "at": "2026-07-23T10:00:00Z",
+        "kind": "session_started"
+      }
+    ]
+  },
+  "provider_rounds": [
+    {
+      "schema_version": "",
+      "report_id": "",
+      "generated_at": "0001-01-01T00:00:00Z",
+      "state": "needs_more_evidence",
+      "round": 0,
+      "evidence_requests": [
+        {
+          "id": "req-network",
+          "operation": "inspect_network_status",
+          "arguments": {},
+          "reason": "Confirm whether DHCP or link is absent.",
+          "expected_information": "Adapter status enum and code.",
+          "privacy_class": "network_status",
+          "timeout_seconds": 20
+        }
+      ],
+      "audit_timeline": null,
+      "limitations": [
+        "Need a second look at adapter status before concluding."
+      ]
+    },
+    {
+      "schema_version": "",
+      "report_id": "",
+      "generated_at": "0001-01-01T00:00:00Z",
+      "state": "completed",
+      "round": 0,
+      "assessment": {
+        "schema_version": "0.2.0",
+        "report_id": "report-eval-no-dhcp",
+        "generated_at": "2026-07-23T10:00:00Z",
+        "mode": "online_agent",
+        "summary": {
+          "headline": "Network media is disconnected",
+          "highest_severity": "warning",
+          "finding_count": 1
+        },
+        "findings": [
+          {
+            "id": "network.no-dhcp",
+            "title": "Network media is disconnected",
+            "severity": "warning",
+            "confidence": "medium",
+            "rationale": "No DHCP lease can be expected while media is disconnected.",
+            "evidence_refs": [
+              "hardware.network_adapters[0].status"
+            ],
+            "source_refs": []
+          }
+        ],
+        "questions": [],
+        "next_steps": [
+          {
+            "id": "step-review_missing_sources",
+            "title": "Continue read-only inspection",
+            "operation": "review_missing_sources",
+            "risk": "read_only",
+            "requires_confirmation": false,
+            "rationale": "Stay within the closed read-only catalog."
+          }
+        ],
+        "limitations": [
+          "Cable, link light, and DHCP server state remain outside this report."
+        ],
+        "sources": []
+      },
+      "evidence_requests": [],
+      "audit_timeline": null,
+      "limitations": [
+        "Cable, link light, and DHCP server state remain outside this report."
+      ]
+    }
+  ],
+  "evidence_catalog": {
+    "inspect_network_status": {
+      "request_id": "",
+      "operation": "",
+      "collected_at": "0001-01-01T00:00:00Z",
+      "facts": {
+        "dhcp": "none",
+        "status": "media_disconnected"
+      },
+      "evidence_refs": [
+        "hardware.network_adapters[0].status"
+      ]
+    }
+  },
+  "expected": {
+    "final_state": "completed",
+    "finding_ids": [
+      "network.no-dhcp"
+    ],
+    "forbidden_claims": [
+      "ipconfig /renew",
+      "powershell",
+      "wifi password"
+    ],
+    "required_evidence_refs": [
+      "hardware.network_adapters[0].status"
+    ],
+    "allowed_operation_ids": [
+      "inspect_network_status",
+      "review_missing_sources"
+    ]
+  }
+}
