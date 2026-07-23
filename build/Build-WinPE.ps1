@@ -3,8 +3,10 @@ param(
     [ValidateSet("amd64")]
     [string]$Architecture = "amd64",
     [string]$Language = "en-us",
+    [string]$UILanguage = "ru-RU",
     [string]$OutputDirectory = "",
     [switch]$IncludeLocalDrivers,
+    [switch]$SkipOSLanguagePack,
     [switch]$BootEx
 )
 
@@ -104,12 +106,21 @@ try {
         }
     }
 
+    if (-not $SkipOSLanguagePack) {
+        & (Join-Path $PSScriptRoot "Add-WinPELanguage.ps1") `
+            -MountDirectory $MountDirectory `
+            -Locale $UILanguage `
+            -Architecture $Architecture `
+            -AdkRoot $AdkRoot
+    }
+
+    # Launch the technician GUI shell. cmd.exe remains available after the shell
+    # exits so emergency console access is preserved if the UI cannot start.
     $Startnet = @"
 wpeinit
 wpeutil InitializeNetwork
 if not exist X:\EffexorWinPE\reports mkdir X:\EffexorWinPE\reports
-X:\EffexorWinPE\bin\effexorwinpe-collector.exe --output X:\EffexorWinPE\reports\initial.json
-X:\EffexorWinPE\bin\effexorwinpe-agent.exe --input X:\EffexorWinPE\reports\initial.json --output X:\EffexorWinPE\reports\initial-diagnosis.json
+X:\EffexorWinPE\bin\effexorwinpe-shell.exe
 cmd.exe
 "@
     Set-Content -Path (Join-Path $MountDirectory "Windows/System32/startnet.cmd") -Value $Startnet -Encoding ASCII

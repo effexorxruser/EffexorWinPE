@@ -1,0 +1,36 @@
+{
+  "schema_version": "0.2.0",
+  "session_id": "session-mock000000000000000001",
+  "report_id": "mockreport00000001",
+  "created_at": "2026-07-22T18:00:05Z",
+  "updated_at": "2026-07-22T18:00:05Z",
+  "symptoms": [],
+  "answers": [],
+  "events": [
+    {
+      "at": "2026-07-22T18:00:05Z",
+      "kind": "session_started"
+    },
+    {
+      "at": "2026-07-22T18:00:05Z",
+      "kind": "offline_assessment_created",
+      "reference": "offline_preflight"
+    }
+  ],
+  "latest_assessment": {
+    "schema_version": "0.2.0",
+    "report_id": "mockreport00000001",
+    "generated_at": "2026-07-22T18:00:05Z",
+    "mode": "offline_preflight",
+    "summary": {
+      "headline": "Offline preflight completed with warnings",
+      "highest_severity": "warning",
+      "finding_count": 2
+    },
+    "findings": [],
+    "questions": [],
+    "next_steps": [],
+    "limitations": [],
+    "sources": []
+  }
+}

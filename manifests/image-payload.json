@@ -16,6 +16,14 @@
     {
       "source": "payload/EffexorWinPE/bin/effexorwinpe-agent.exe",
       "destination": "bin/effexorwinpe-agent.exe"
+    },
+    {
+      "source": "payload/EffexorWinPE/bin/effexorwinpe-shell.exe",
+      "destination": "bin/effexorwinpe-shell.exe"
+    },
+    {
+      "source": "payload/EffexorWinPE/config/winpeshl.ini.example",
+      "destination": "config/winpeshl.ini.example"
     }
   ]
 }

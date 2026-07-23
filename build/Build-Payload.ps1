@@ -23,7 +23,8 @@ try {
     $env:CGO_ENABLED = "0"
     $Targets = @(
         @{ Package = "./cmd/effexorwinpe-collector"; Output = "effexorwinpe-collector.exe" },
-        @{ Package = "./cmd/effexorwinpe-agent"; Output = "effexorwinpe-agent.exe" }
+        @{ Package = "./cmd/effexorwinpe-agent"; Output = "effexorwinpe-agent.exe" },
+        @{ Package = "./cmd/effexorwinpe-shell"; Output = "effexorwinpe-shell.exe" }
     )
     foreach ($Target in $Targets) {
         $OutputPath = Join-Path $PayloadBin $Target.Output
