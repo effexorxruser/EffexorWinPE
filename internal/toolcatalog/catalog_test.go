@@ -3,9 +3,12 @@ package toolcatalog_test
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
@@ -27,18 +30,21 @@ func TestToolCatalogJSONMatchesSchema(t *testing.T) {
 	}
 }
 
-func TestToolCatalogProfileToolIDsExist(t *testing.T) {
+func TestToolCatalogIntegrity(t *testing.T) {
 	t.Parallel()
 	catalog := loadCatalog(t)
 
-	ids := make(map[string]struct{}, len(catalog.Tools))
+	toolIDs := make(map[string]struct{}, len(catalog.Tools))
+	toolsByID := make(map[string]catalogTool, len(catalog.Tools))
 	for _, tool := range catalog.Tools {
-		if _, exists := ids[tool.ID]; exists {
+		if _, exists := toolIDs[tool.ID]; exists {
 			t.Fatalf("duplicate tool id %q", tool.ID)
 		}
-		ids[tool.ID] = struct{}{}
+		toolIDs[tool.ID] = struct{}{}
+		toolsByID[tool.ID] = tool
 	}
 
+	profileIDs := make(map[string]struct{}, len(catalog.Profiles))
 	requiredProfiles := map[string]struct{}{
 		"minimal-diagnostics": {},
 		"technician-standard": {},
@@ -47,15 +53,50 @@ func TestToolCatalogProfileToolIDsExist(t *testing.T) {
 		"multiboot-extras":    {},
 	}
 	for _, profile := range catalog.Profiles {
+		if _, exists := profileIDs[profile.ID]; exists {
+			t.Fatalf("duplicate profile id %q", profile.ID)
+		}
+		profileIDs[profile.ID] = struct{}{}
 		delete(requiredProfiles, profile.ID)
+
 		for _, toolID := range profile.ToolIDs {
-			if _, ok := ids[toolID]; !ok {
+			if _, ok := toolIDs[toolID]; !ok {
 				t.Fatalf("profile %q references unknown tool id %q", profile.ID, toolID)
 			}
 		}
+		assertProfileMaturity(t, profile, toolsByID)
 	}
 	for missing := range requiredProfiles {
 		t.Fatalf("missing required release profile %q", missing)
+	}
+
+	deps := make(map[string][]string, len(catalog.Tools))
+	for _, tool := range catalog.Tools {
+		for _, dep := range tool.Dependencies {
+			if dep == tool.ID {
+				t.Fatalf("tool %q has a self-dependency", tool.ID)
+			}
+			if _, ok := toolIDs[dep]; !ok {
+				t.Fatalf("tool %q depends on unknown id %q", tool.ID, dep)
+			}
+		}
+		deps[tool.ID] = append([]string(nil), tool.Dependencies...)
+	}
+	if cycle := findDependencyCycle(deps); cycle != "" {
+		t.Fatalf("dependency cycle detected: %s", cycle)
+	}
+
+	minimal := findProfile(t, catalog, "minimal-diagnostics")
+	for _, toolID := range minimal.ToolIDs {
+		tool := toolsByID[toolID]
+		switch tool.Risk {
+		case "read_only", "low":
+		default:
+			t.Fatalf("minimal-diagnostics tool %q has risk %q; minimal profile must stay read-only", toolID, tool.Risk)
+		}
+		if toolID == "winpe-diskpart" {
+			t.Fatal("minimal-diagnostics must not include winpe-diskpart")
+		}
 	}
 }
 
@@ -90,12 +131,19 @@ func TestToolCatalogRequiredFieldsPresent(t *testing.T) {
 		if len(tool.Architectures) == 0 || len(tool.Environment) == 0 {
 			t.Fatalf("tool %q missing architectures or environment", tool.ID)
 		}
+		if tool.License == "proprietary-effexor" {
+			t.Fatalf("tool %q still uses proprietary-effexor; first-party code is MIT", tool.ID)
+		}
+		if strings.HasPrefix(tool.ID, "effexor") && tool.License != "mit" {
+			t.Fatalf("first-party tool %q license = %q, want mit", tool.ID, tool.License)
+		}
 		if _, ok := requiredCategories[tool.Category]; ok {
 			requiredCategories[tool.Category] = true
 		}
 		if tool.IntegrationStatus == "policy_blocked" {
-			if tool.Risk != "policy_blocked" || tool.DownloadMode != "none" {
-				t.Fatalf("policy_blocked tool %q has risk=%q download_mode=%q", tool.ID, tool.Risk, tool.DownloadMode)
+			if tool.Risk != "policy_blocked" || tool.DownloadMode != "none" || tool.LicenseReviewStatus != "blocked" {
+				t.Fatalf("policy_blocked tool %q has risk=%q download_mode=%q license_review_status=%q",
+					tool.ID, tool.Risk, tool.DownloadMode, tool.LicenseReviewStatus)
 			}
 		}
 		switch tool.DownloadMode {
@@ -108,11 +156,31 @@ func TestToolCatalogRequiredFieldsPresent(t *testing.T) {
 				t.Fatalf("tool %q download_mode=%q expects checksum_required=false", tool.ID, tool.DownloadMode)
 			}
 		}
+		assertLicenseReviewConsistency(t, tool)
 	}
 	for category, seen := range requiredCategories {
 		if !seen {
 			t.Fatalf("catalog missing category %q", category)
 		}
+	}
+	if _, ok := findToolOptional(catalog, "oem-firmware-updater"); ok {
+		t.Fatal("generic oem-firmware-updater entry must be removed")
+	}
+	if _, ok := findToolOptional(catalog, "oem-firmware-updater-policy"); !ok {
+		t.Fatal("expected oem-firmware-updater-policy template")
+	}
+}
+
+func TestToolCatalogOfficialURLs(t *testing.T) {
+	t.Parallel()
+	catalog := loadCatalog(t)
+	forbiddenExt := map[string]struct{}{
+		".exe": {}, ".msi": {}, ".zip": {}, ".7z": {}, ".rar": {},
+		".iso": {}, ".wim": {}, ".cab": {}, ".dmg": {}, ".pkg": {},
+	}
+	for _, tool := range catalog.Tools {
+		assertHTTPSDocumentURL(t, "official_url", tool.ID, tool.OfficialURL, forbiddenExt)
+		assertHTTPSDocumentURL(t, "review_source", tool.ID, tool.ReviewSource, forbiddenExt)
 	}
 }
 
@@ -121,22 +189,25 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 	schema := compileCatalogSchema(t)
 
 	validTool := map[string]any{
-		"id":                  "example-tool",
-		"title":               "Example",
-		"category":            "network",
-		"license":             "mit",
-		"commercial_use":      "allowed",
-		"redistribution":      "allowed",
-		"official_url":        "https://example.invalid/tool",
-		"download_mode":       "technician_cache",
-		"checksum_required":   true,
-		"architectures":       []any{"amd64"},
-		"environment":         []any{"winpe"},
-		"cli_or_gui":          "cli",
-		"risk":                "low",
-		"size":                "small",
-		"dependencies":        []any{},
-		"integration_status":  "candidate",
+		"id":                    "example-tool",
+		"title":                 "Example",
+		"category":              "network",
+		"license":               "mit",
+		"commercial_use":        "allowed",
+		"redistribution":        "allowed",
+		"official_url":          "https://example.invalid/tool",
+		"download_mode":         "technician_cache",
+		"checksum_required":     true,
+		"architectures":         []any{"amd64"},
+		"environment":           []any{"winpe"},
+		"cli_or_gui":            "cli",
+		"risk":                  "low",
+		"size":                  "small",
+		"dependencies":          []any{},
+		"integration_status":    "candidate",
+		"license_review_status": "reviewed",
+		"review_source":         "https://example.invalid/license",
+		"reviewed_at":           "2026-07-23",
 	}
 
 	tests := []struct {
@@ -169,6 +240,31 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 				tool["download_mode"] = "manual_official"
 				tool["checksum_required"] = true
 				tool["redistribution"] = "prohibited"
+				tool["license_review_status"] = "blocked"
+				tool["reviewed_at"] = nil
+				doc["tools"] = []any{tool}
+			},
+			wantErr: true,
+		},
+		{
+			name: "http official_url",
+			mutate: func(doc map[string]any) {
+				tools := doc["tools"].([]any)
+				tool := cloneMap(tools[0].(map[string]any))
+				tool["official_url"] = "http://example.invalid/tool"
+				doc["tools"] = []any{tool}
+			},
+			wantErr: true,
+		},
+		{
+			name: "pending with final commercial_use",
+			mutate: func(doc map[string]any) {
+				tools := doc["tools"].([]any)
+				tool := cloneMap(tools[0].(map[string]any))
+				tool["license_review_status"] = "pending"
+				tool["commercial_use"] = "allowed"
+				tool["redistribution"] = "review_required"
+				tool["reviewed_at"] = nil
 				doc["tools"] = []any{tool}
 			},
 			wantErr: true,
@@ -184,11 +280,11 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "missing required profile field",
+			name: "missing profile maturity",
 			mutate: func(doc map[string]any) {
 				profiles := doc["profiles"].([]any)
 				profile := cloneMap(profiles[0].(map[string]any))
-				delete(profile, "tool_ids")
+				delete(profile, "maturity")
 				doc["profiles"] = []any{profile}
 			},
 			wantErr: true,
@@ -205,6 +301,7 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 						"id":          "minimal-diagnostics",
 						"title":       "Minimal",
 						"description": "Test profile",
+						"maturity":    "conceptual",
 						"tool_ids":    []any{"example-tool"},
 					},
 				},
@@ -230,38 +327,36 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 	}
 }
 
-func TestToolCatalogHasNoDirectBinaryDownloadURLs(t *testing.T) {
-	t.Parallel()
-	catalog := loadCatalog(t)
-	forbiddenSuffixes := []string{".exe", ".msi", ".zip", ".7z", ".rar", ".iso", ".wim", ".cab"}
-	for _, tool := range catalog.Tools {
-		url := tool.OfficialURL
-		for _, suffix := range forbiddenSuffixes {
-			if len(url) >= len(suffix) && equalFoldSuffix(url, suffix) {
-				t.Fatalf("tool %q official_url looks like a direct binary download: %s", tool.ID, url)
-			}
-		}
-	}
+type catalogFile struct {
+	SchemaVersion int              `json:"schema_version"`
+	Profiles      []catalogProfile `json:"profiles"`
+	Tools         []catalogTool    `json:"tools"`
 }
 
-type catalogFile struct {
-	SchemaVersion int `json:"schema_version"`
-	Profiles      []struct {
-		ID      string   `json:"id"`
-		ToolIDs []string `json:"tool_ids"`
-	} `json:"profiles"`
-	Tools []struct {
-		ID                 string   `json:"id"`
-		Title              string   `json:"title"`
-		Category           string   `json:"category"`
-		OfficialURL        string   `json:"official_url"`
-		DownloadMode       string   `json:"download_mode"`
-		ChecksumRequired   bool     `json:"checksum_required"`
-		Architectures      []string `json:"architectures"`
-		Environment        []string `json:"environment"`
-		Risk               string   `json:"risk"`
-		IntegrationStatus  string   `json:"integration_status"`
-	} `json:"tools"`
+type catalogProfile struct {
+	ID       string   `json:"id"`
+	Maturity string   `json:"maturity"`
+	ToolIDs  []string `json:"tool_ids"`
+}
+
+type catalogTool struct {
+	ID                  string   `json:"id"`
+	Title               string   `json:"title"`
+	Category            string   `json:"category"`
+	License             string   `json:"license"`
+	CommercialUse       string   `json:"commercial_use"`
+	Redistribution      string   `json:"redistribution"`
+	OfficialURL         string   `json:"official_url"`
+	DownloadMode        string   `json:"download_mode"`
+	ChecksumRequired    bool     `json:"checksum_required"`
+	Architectures       []string `json:"architectures"`
+	Environment         []string `json:"environment"`
+	Risk                string   `json:"risk"`
+	Dependencies        []string `json:"dependencies"`
+	IntegrationStatus   string   `json:"integration_status"`
+	LicenseReviewStatus string   `json:"license_review_status"`
+	ReviewSource        string   `json:"review_source"`
+	ReviewedAt          *string  `json:"reviewed_at"`
 }
 
 func loadCatalog(t *testing.T) catalogFile {
@@ -279,6 +374,7 @@ func compileCatalogSchema(t *testing.T) *jsonschema.Schema {
 	raw := readRepoFile(t, "manifests", "tool-catalog.schema.json")
 	compiler := jsonschema.NewCompiler()
 	compiler.Draft = jsonschema.Draft2020
+	compiler.AssertFormat = true
 	if err := compiler.AddResource(schemaURL, bytes.NewReader(raw)); err != nil {
 		t.Fatalf("AddResource() error = %v", err)
 	}
@@ -312,26 +408,128 @@ func cloneMap(in map[string]any) map[string]any {
 	return out
 }
 
-func equalFoldSuffix(value, suffix string) bool {
-	if len(value) < len(suffix) {
-		return false
-	}
-	a := value[len(value)-len(suffix):]
-	if len(a) != len(suffix) {
-		return false
-	}
-	for i := 0; i < len(suffix); i++ {
-		ac := a[i]
-		bc := suffix[i]
-		if ac >= 'A' && ac <= 'Z' {
-			ac += 'a' - 'A'
-		}
-		if bc >= 'A' && bc <= 'Z' {
-			bc += 'a' - 'A'
-		}
-		if ac != bc {
-			return false
+func findProfile(t *testing.T, catalog catalogFile, id string) catalogProfile {
+	t.Helper()
+	for _, profile := range catalog.Profiles {
+		if profile.ID == id {
+			return profile
 		}
 	}
-	return true
+	t.Fatalf("profile %q not found", id)
+	return catalogProfile{}
+}
+
+func findToolOptional(catalog catalogFile, id string) (catalogTool, bool) {
+	for _, tool := range catalog.Tools {
+		if tool.ID == id {
+			return tool, true
+		}
+	}
+	return catalogTool{}, false
+}
+
+func assertProfileMaturity(t *testing.T, profile catalogProfile, toolsByID map[string]catalogTool) {
+	t.Helper()
+	hasIncomplete := false
+	for _, toolID := range profile.ToolIDs {
+		switch toolsByID[toolID].IntegrationStatus {
+		case "candidate", "planned":
+			hasIncomplete = true
+		}
+	}
+	switch profile.Maturity {
+	case "conceptual", "experimental":
+		return
+	case "release_candidate", "released":
+		if hasIncomplete {
+			t.Fatalf("profile %q maturity %q includes candidate/planned tools", profile.ID, profile.Maturity)
+		}
+	default:
+		t.Fatalf("profile %q has unknown maturity %q", profile.ID, profile.Maturity)
+	}
+}
+
+func assertLicenseReviewConsistency(t *testing.T, tool catalogTool) {
+	t.Helper()
+	switch tool.LicenseReviewStatus {
+	case "pending":
+		if tool.CommercialUse != "unknown" || tool.Redistribution != "review_required" {
+			t.Fatalf("pending tool %q must use commercial_use=unknown redistribution=review_required", tool.ID)
+		}
+		if tool.ReviewedAt != nil {
+			t.Fatalf("pending tool %q reviewed_at must be null", tool.ID)
+		}
+	case "reviewed":
+		if tool.ReviewedAt == nil || *tool.ReviewedAt == "" {
+			t.Fatalf("reviewed tool %q missing reviewed_at", tool.ID)
+		}
+	case "not_required", "blocked":
+		if tool.ReviewedAt != nil {
+			t.Fatalf("%s tool %q reviewed_at must be null", tool.LicenseReviewStatus, tool.ID)
+		}
+	default:
+		t.Fatalf("tool %q has unknown license_review_status %q", tool.ID, tool.LicenseReviewStatus)
+	}
+}
+
+func assertHTTPSDocumentURL(t *testing.T, field, toolID, raw string, forbiddenExt map[string]struct{}) {
+	t.Helper()
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("tool %q %s parse error: %v", toolID, field, err)
+	}
+	if parsed.Scheme != "https" {
+		t.Fatalf("tool %q %s scheme = %q, want https", toolID, field, parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		t.Fatalf("tool %q %s missing host: %s", toolID, field, raw)
+	}
+	ext := strings.ToLower(path.Ext(parsed.Path))
+	if _, blocked := forbiddenExt[ext]; blocked {
+		t.Fatalf("tool %q %s looks like a direct binary download (%s): %s", toolID, field, ext, raw)
+	}
+}
+
+func findDependencyCycle(deps map[string][]string) string {
+	const (
+		white = 0
+		gray  = 1
+		black = 2
+	)
+	color := make(map[string]int, len(deps))
+	var stack []string
+	var dfs func(string) string
+	dfs = func(node string) string {
+		color[node] = gray
+		stack = append(stack, node)
+		for _, next := range deps[node] {
+			switch color[next] {
+			case white:
+				if cycle := dfs(next); cycle != "" {
+					return cycle
+				}
+			case gray:
+				start := 0
+				for i, id := range stack {
+					if id == next {
+						start = i
+						break
+					}
+				}
+				cycle := append(append([]string{}, stack[start:]...), next)
+				return strings.Join(cycle, " -> ")
+			}
+		}
+		stack = stack[:len(stack)-1]
+		color[node] = black
+		return ""
+	}
+	for id := range deps {
+		if color[id] == white {
+			if cycle := dfs(id); cycle != "" {
+				return cycle
+			}
+		}
+	}
+	return ""
 }

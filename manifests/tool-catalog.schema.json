@@ -41,6 +41,11 @@
         "multiboot-extras"
       ]
     },
+    "profileMaturity": {
+      "type": "string",
+      "enum": ["conceptual", "experimental", "release_candidate", "released"],
+      "description": "Profiles that still reference candidate or planned tools must stay conceptual or experimental."
+    },
     "category": {
       "type": "string",
       "enum": [
@@ -62,7 +67,7 @@
     "license": {
       "type": "string",
       "enum": [
-        "proprietary-effexor",
+        "mit",
         "microsoft-winpe-component",
         "microsoft-windows",
         "gpl-2.0",
@@ -71,7 +76,6 @@
         "lgpl-3.0",
         "bsd-2-clause",
         "bsd-3-clause",
-        "mit",
         "apache-2.0",
         "cc0-1.0",
         "proprietary-vendor",
@@ -129,14 +133,26 @@
         "policy_blocked"
       ]
     },
+    "licenseReviewStatus": {
+      "type": "string",
+      "enum": ["reviewed", "pending", "not_required", "blocked"]
+    },
+    "httpsUri": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "minLength": 8,
+      "description": "HTTPS documentation or project home page. Not a direct binary download URL."
+    },
     "profile": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "description", "tool_ids"],
+      "required": ["id", "title", "description", "maturity", "tool_ids"],
       "properties": {
         "id": { "$ref": "#/$defs/profileId" },
         "title": { "$ref": "#/$defs/nonEmptyString" },
         "description": { "$ref": "#/$defs/nonEmptyString" },
+        "maturity": { "$ref": "#/$defs/profileMaturity" },
         "tool_ids": {
           "type": "array",
           "minItems": 1,
@@ -164,7 +180,10 @@
         "risk",
         "size",
         "dependencies",
-        "integration_status"
+        "integration_status",
+        "license_review_status",
+        "review_source",
+        "reviewed_at"
       ],
       "properties": {
         "id": {
@@ -177,11 +196,7 @@
         "license": { "$ref": "#/$defs/license" },
         "commercial_use": { "$ref": "#/$defs/commercialUse" },
         "redistribution": { "$ref": "#/$defs/redistribution" },
-        "official_url": {
-          "type": "string",
-          "description": "Official documentation or project home page. Must not be a direct binary download of an unapproved package.",
-          "minLength": 1
-        },
+        "official_url": { "$ref": "#/$defs/httpsUri" },
         "download_mode": { "$ref": "#/$defs/downloadMode" },
         "checksum_required": { "type": "boolean" },
         "architectures": {
@@ -205,6 +220,12 @@
           "items": { "$ref": "#/$defs/nonEmptyString" }
         },
         "integration_status": { "$ref": "#/$defs/integrationStatus" },
+        "license_review_status": { "$ref": "#/$defs/licenseReviewStatus" },
+        "review_source": { "$ref": "#/$defs/httpsUri" },
+        "reviewed_at": {
+          "type": ["string", "null"],
+          "description": "UTC calendar date (YYYY-MM-DD) when review completed; null while pending or not required."
+        },
         "notes": { "type": "string" }
       },
       "allOf": [
@@ -234,7 +255,8 @@
             "properties": {
               "risk": { "const": "policy_blocked" },
               "download_mode": { "const": "none" },
-              "redistribution": { "enum": ["prohibited", "not_applicable"] }
+              "redistribution": { "enum": ["prohibited", "not_applicable"] },
+              "license_review_status": { "const": "blocked" }
             }
           }
         },
@@ -250,6 +272,50 @@
           "then": {
             "properties": {
               "checksum_required": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "const": "pending" }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "commercial_use": { "const": "unknown" },
+              "redistribution": { "const": "review_required" },
+              "reviewed_at": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "const": "reviewed" }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": {
+                "type": "string",
+                "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "license_review_status": { "enum": ["not_required", "blocked"] }
+            },
+            "required": ["license_review_status"]
+          },
+          "then": {
+            "properties": {
+              "reviewed_at": { "type": "null" }
             }
           }
         }

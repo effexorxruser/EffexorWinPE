@@ -29,12 +29,12 @@ Related artifacts:
 
 ## Release profiles (summary)
 
-Defined in `manifests/tool-catalog.json` → `profiles`:
+Defined in `manifests/tool-catalog.json` → `profiles`. Each profile has a `maturity` of `conceptual`, `experimental`, `release_candidate`, or `released`. Profiles that still reference `candidate` or `planned` tools must stay `conceptual` or `experimental` so they are not mistaken for shippable payloads.
 
 | Profile | Intent |
 | --- | --- |
-| `minimal-diagnostics` | Read-only inventory and preflight only |
-| `technician-standard` | Day-to-day repair: disks view, boot inspect/repair planning, file copy, wired network |
+| `minimal-diagnostics` | Read-only inventory and preflight only (no raw `diskpart`) |
+| `technician-standard` | Day-to-day repair: disks view, boot inspect/repair planning, file copy, wired network; advanced destructive builtins |
 | `data-recovery` | Imaging and file-carving candidates (external, checksum-pinned) |
 | `network-enabled` | Wired share/HTTP helpers and remote-assist *policy* hooks; no VPN secrets in image |
 | `multiboot-extras` | Optional Linux live / MemTest-class entries on technician media (not inside WinPE WIM) |
@@ -495,8 +495,11 @@ Defined in `manifests/tool-catalog.json` → `profiles`:
 
 ## Catalog maintenance rules
 
-1. Every third-party tool needs `license`, `commercial_use`, `redistribution`, `official_url`, and `checksum_required: true` before `integration_status` may become `approved` or `shipped`.
-2. `download_mode` of `build_time_fetch` or `technician_cache` is allowed only after redistribution is `allowed` or `restricted` with a recorded decision.
-3. Prefer first-party + Microsoft WinPE components over GUI clones of Strelec menus.
-4. Generated payloads and binaries stay out of Git (`AGENTS.md`).
-5. New diagnostic fields still require `contracts/diagnostic-report.schema.json` updates — not done in this research PR.
+1. First-party EffexorWinPE components use MIT (`LICENSE`). Do not invent a `proprietary-effexor` license for collector, agent, shell, gateway client, or planned first-party helpers.
+2. Every tool records `license_review_status`, `review_source` (https), and `reviewed_at`. While status is `pending`, `commercial_use` must stay `unknown` and `redistribution` must stay `review_required`.
+3. `official_url` / `review_source` are https URIs to documentation or project homes, never direct binary downloads.
+4. `download_mode` of `build_time_fetch` or `technician_cache` is allowed only after redistribution is `allowed` or `restricted` with a recorded decision.
+5. Prefer first-party + Microsoft WinPE components over GUI clones of Strelec menus.
+6. Each OEM firmware updater needs its own catalog id; use the policy-only `oem-firmware-updater-policy` entry as the template, not a generic vendor URL.
+7. Generated payloads and binaries stay out of Git (`AGENTS.md`).
+8. New diagnostic fields still require `contracts/diagnostic-report.schema.json` updates — not done in this research PR.
