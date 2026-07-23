@@ -24,6 +24,9 @@ func TestEvalFixtures(t *testing.T) {
 
 	now := time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)
 	report := agenteval.RunFixtures(context.Background(), fixtures, now)
+	if report.Harness != "scenario-eval" {
+		t.Fatalf("harness = %q", report.Harness)
+	}
 	outPath := filepath.Join(t.TempDir(), "eval-report.json")
 	if envPath := os.Getenv("EFFEXORWINPE_EVAL_OUT"); envPath != "" {
 		outPath = envPath
@@ -57,6 +60,9 @@ func TestEvalFixtures(t *testing.T) {
 	}
 	for _, fixture := range fixtures {
 		seen[fixture.ID] = struct{}{}
+		if fixture.Expected.FinalRound < 1 {
+			t.Fatalf("fixture %s missing final_round", fixture.ID)
+		}
 		for _, round := range fixture.ProviderRounds {
 			for _, request := range round.EvidenceRequests {
 				if !agentloop.IsAllowedEvidenceOperation(request.Operation) {

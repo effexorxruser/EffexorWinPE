@@ -190,9 +190,10 @@
       ]
     }
   ],
-  "evidence_catalog": null,
+  "evidence_catalog": {},
   "expected": {
     "final_state": "completed",
+    "final_round": 1,
     "finding_ids": [
       "windows.multiple-installations"
     ],

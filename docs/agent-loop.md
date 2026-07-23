@@ -18,13 +18,13 @@ Every versioned result (`contracts/agent-result.schema.json`, schema `0.1.0`) us
 Evidence requests are structured objects, never shell text:
 
 - `operation` — closed read-only allowlist ID
-- `arguments` — validated key/value map for that operation
+- `arguments` — validated against the current report (roots, BCD stores, disks/devices, mount points, check IDs only; UNC and device namespaces are rejected)
 - `reason` — why the observation is needed
 - `expected_information` — what the next round expects to learn
 - `privacy_class` — fixed per operation (`machine_inventory`, `boot_config`, `storage_health`, `encryption_status`, `network_status`)
-- `timeout_seconds` — bounded local collection budget
+- `timeout_seconds` — applied with `context.WithTimeout` around local collection
 
-The allowlist currently includes the gateway MVP next-step operations plus a few extra read-only collectors used only inside the loop (`inspect_network_status`, `inspect_partition_layout`, `inspect_boot_firmware`). Technician-facing `next_steps` in a completed assessment stay limited to the existing diagnosis catalog.
+Completed assessments are validated by the shared gateway policy (`ValidateOnlineAssessmentWithEvidence`), including evidence/source refs, finding counts/severity/confidence/IDs, and the closed next-step catalog. Collected evidence refs may augment the report catalog; they do not invent a second validator.
 
 ## Loop limits
 

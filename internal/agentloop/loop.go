@@ -44,6 +44,12 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 	if loop.Provider == nil {
 		return Result{}, fmt.Errorf("agent loop provider is required")
 	}
+	if err := sess.Validate(report.ReportID); err != nil {
+		return Result{}, fmt.Errorf("session context: %w", err)
+	}
+	if report.SchemaVersion != diagnostics.SchemaVersion {
+		return Result{}, fmt.Errorf("unsupported diagnostic schema %q", report.SchemaVersion)
+	}
 	options := loop.normalizedOptions()
 	if options.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -79,12 +85,6 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 
 		proposal, err := loop.Provider.Propose(ctx, input)
 		if err != nil {
-			audit = append(audit, AuditEvent{
-				At:     options.Now().UTC(),
-				Kind:   AuditLoopFailed,
-				Round:  round,
-				Detail: "provider error",
-			})
 			return loop.fail(report.ReportID, round, audit, "provider_error", "Provider failed without changing the client system.", options.Now()), err
 		}
 		proposal.Round = round
@@ -108,13 +108,23 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 		if err := validateSize("provider response", proposal, options.MaxResponseBytes); err != nil {
 			return loop.fail(report.ReportID, round, audit, "response_too_large", err.Error(), options.Now()), err
 		}
-		if err := ValidateResult(proposal, priorKeys); err != nil {
-			audit = append(audit, AuditEvent{
-				At:     options.Now().UTC(),
-				Kind:   AuditLoopFailed,
-				Round:  round,
-				Detail: err.Error(),
-			})
+		validation := ValidationContext{
+			Report:           report,
+			Session:          sess,
+			PriorEvidence:    priorEvidence,
+			PriorRequestKeys: priorKeys,
+			MaxRounds:        options.MaxRounds,
+		}
+		if err := ValidateResult(proposal, validation); err != nil {
+			if IsDuplicateEvidence(err) {
+				audit = append(audit, AuditEvent{
+					At:        options.Now().UTC(),
+					Kind:      AuditDuplicateRequestRejected,
+					Round:     round,
+					Reference: proposal.ReportID,
+					Detail:    err.Error(),
+				})
+			}
 			return loop.fail(report.ReportID, round, audit, "invalid_provider_result", "Provider result failed policy validation.", options.Now()), err
 		}
 		audit = append(audit, AuditEvent{
@@ -159,10 +169,10 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 					EvidenceRequests: []EvidenceRequest{},
 					Block: &StatusDetail{
 						Code:    "max_rounds_exceeded",
-						Message: "Evidence gathering stopped after the maximum number of rounds.",
+						Message: fmt.Sprintf("Evidence gathering stopped after %d rounds.", options.MaxRounds),
 					},
 					Limitations: []string{
-						"The agent loop stopped after three rounds without a completed assessment.",
+						fmt.Sprintf("The agent loop stopped after %d rounds without a completed assessment.", options.MaxRounds),
 					},
 				}
 				audit = append(audit, AuditEvent{
@@ -186,7 +196,9 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 					Reference: request.ID,
 					Detail:    key,
 				})
-				payload, err := loop.Collector.Collect(ctx, request)
+				collectCtx, cancel := context.WithTimeout(ctx, time.Duration(request.TimeoutSeconds)*time.Second)
+				payload, err := loop.Collector.Collect(collectCtx, request)
+				cancel()
 				if err != nil {
 					return loop.fail(report.ReportID, round, audit, "evidence_collection_failed", "Read-only evidence collection failed.", options.Now()), err
 				}
@@ -198,6 +210,15 @@ func (loop Loop) Run(ctx context.Context, report diagnostics.Report, sess sessio
 				}
 				if payload.CollectedAt.IsZero() {
 					payload.CollectedAt = options.Now().UTC()
+				}
+				if payload.Facts == nil {
+					payload.Facts = map[string]any{}
+				}
+				if payload.EvidenceRefs == nil {
+					payload.EvidenceRefs = []string{}
+				}
+				if err := ValidateEvidencePayload(payload, request); err != nil {
+					return loop.fail(report.ReportID, round, audit, "invalid_evidence_payload", "Collected evidence failed validation.", options.Now()), err
 				}
 				priorEvidence = append(priorEvidence, payload)
 				priorKeys = append(priorKeys, key)
@@ -240,13 +261,15 @@ func (loop Loop) normalizedOptions() Options {
 }
 
 func (loop Loop) fail(reportID string, round int, audit []AuditEvent, code, message string, now time.Time) Result {
-	audit = append(audit, AuditEvent{
-		At:        now.UTC(),
-		Kind:      AuditLoopFailed,
-		Round:     round,
-		Reference: code,
-		Detail:    message,
-	})
+	if len(audit) == 0 || audit[len(audit)-1].Kind != AuditLoopFailed {
+		audit = append(audit, AuditEvent{
+			At:        now.UTC(),
+			Kind:      AuditLoopFailed,
+			Round:     round,
+			Reference: code,
+			Detail:    message,
+		})
+	}
 	return Result{
 		SchemaVersion:    SchemaVersion,
 		ReportID:         reportID,

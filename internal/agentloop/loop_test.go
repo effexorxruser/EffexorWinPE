@@ -11,7 +11,8 @@ import (
 	"github.com/effexorxruser/EffexorWinPE/internal/session"
 )
 
-func TestValidateEvidenceRequestAllowlist(t *testing.T) {
+func TestValidateEvidenceRequestAllowlistAndContext(t *testing.T) {
+	report := sampleReport("report-ops-1")
 	request := EvidenceRequest{
 		ID:                  "req-storage",
 		Operation:           OpInspectStorageHealth,
@@ -21,11 +22,16 @@ func TestValidateEvidenceRequestAllowlist(t *testing.T) {
 		PrivacyClass:        PrivacyStorageHealth,
 		TimeoutSeconds:      30,
 	}
-	if err := ValidateEvidenceRequest(request); err != nil {
+	if err := ValidateEvidenceRequest(request, report); err != nil {
 		t.Fatalf("ValidateEvidenceRequest() error = %v", err)
 	}
+	request.Arguments = map[string]any{"device_id": `\\.\PhysicalDrive0`}
+	if err := ValidateEvidenceRequest(request, report); err == nil {
+		t.Fatal("expected forbidden device namespace rejection")
+	}
 	request.Operation = "run_powershell"
-	if err := ValidateEvidenceRequest(request); err == nil {
+	request.Arguments = map[string]any{}
+	if err := ValidateEvidenceRequest(request, report); err == nil {
 		t.Fatal("expected unknown operation rejection")
 	}
 }
@@ -75,7 +81,7 @@ func TestLoopCompletesAndBlocksDuplicateEvidence(t *testing.T) {
 	collector := mapCollector{
 		OpInspectStorageHealth: EvidencePayload{
 			Facts:        map[string]any{"health_status": "Warning"},
-			EvidenceRefs: []string{"storage.drive_health[0].health_status"},
+			EvidenceRefs: []string{"storage.disks[0].health_status"},
 		},
 	}
 	loop := Loop{
@@ -92,6 +98,22 @@ func TestLoopCompletesAndBlocksDuplicateEvidence(t *testing.T) {
 	}
 	if result.Failure == nil || result.Failure.Code != "invalid_provider_result" {
 		t.Fatalf("failure = %#v", result.Failure)
+	}
+	failedEvents := 0
+	sawDuplicate := false
+	for _, event := range result.AuditTimeline {
+		if event.Kind == AuditDuplicateRequestRejected {
+			sawDuplicate = true
+		}
+		if event.Kind == AuditLoopFailed {
+			failedEvents++
+		}
+	}
+	if !sawDuplicate {
+		t.Fatalf("missing duplicate_request_rejected in %#v", result.AuditTimeline)
+	}
+	if failedEvents != 1 {
+		t.Fatalf("loop_failed count = %d, want 1 in %#v", failedEvents, result.AuditTimeline)
 	}
 }
 
@@ -147,7 +169,7 @@ func TestLoopCompletesAfterEvidence(t *testing.T) {
 	}
 }
 
-func TestMaxRoundsBlocks(t *testing.T) {
+func TestMaxRoundsBlocksUsesConfiguredLimit(t *testing.T) {
 	now := time.Unix(1_700_000_200, 0).UTC()
 	report := sampleReport("report-loop-3")
 	sess := sampleSession(t, report.ReportID, now)
@@ -157,14 +179,14 @@ func TestMaxRoundsBlocks(t *testing.T) {
 		needsEvidence(OpReviewMissingSources, PrivacyMachineInventory, "req-c"),
 	}}
 	collector := mapCollector{
-		OpInspectBootFirmware:    EvidencePayload{Facts: map[string]any{"mode": "uefi"}},
-		OpInspectPartitionLayout: EvidencePayload{Facts: map[string]any{"partitions": 4}},
-		OpReviewMissingSources:   EvidencePayload{Facts: map[string]any{"missing": 1}},
+		OpInspectBootFirmware:    EvidencePayload{Facts: map[string]any{"mode": "uefi"}, EvidenceRefs: []string{}},
+		OpInspectPartitionLayout: EvidencePayload{Facts: map[string]any{"partitions": 4}, EvidenceRefs: []string{}},
+		OpReviewMissingSources:   EvidencePayload{Facts: map[string]any{"missing": 1}, EvidenceRefs: []string{}},
 	}
 	loop := Loop{
 		Provider:  provider,
 		Collector: collector,
-		Options:   Options{Now: func() time.Time { return now }, Timeout: time.Minute},
+		Options:   Options{Now: func() time.Time { return now }, Timeout: time.Minute, MaxRounds: 3},
 	}
 	result, err := loop.Run(context.Background(), report, sess)
 	if err != nil {
@@ -175,6 +197,31 @@ func TestMaxRoundsBlocks(t *testing.T) {
 	}
 	if result.Block == nil || result.Block.Code != "max_rounds_exceeded" {
 		t.Fatalf("block = %#v", result.Block)
+	}
+	if !strings.Contains(result.Block.Message, "3 rounds") {
+		t.Fatalf("block message = %q", result.Block.Message)
+	}
+}
+
+func TestEvidenceRequestTimeoutPropagates(t *testing.T) {
+	now := time.Unix(1_700_000_300, 0).UTC()
+	report := sampleReport("report-loop-4")
+	sess := sampleSession(t, report.ReportID, now)
+	provider := &scriptedProvider{rounds: []Result{
+		needsEvidence(OpInspectNetworkStatus, PrivacyNetworkStatus, "req-timeout"),
+	}}
+	collector := timeoutCollector{}
+	loop := Loop{
+		Provider:  provider,
+		Collector: collector,
+		Options:   Options{Now: func() time.Time { return now }, Timeout: time.Minute},
+	}
+	result, err := loop.Run(context.Background(), report, sess)
+	if err == nil {
+		t.Fatal("expected timeout failure")
+	}
+	if result.Failure == nil || result.Failure.Code != "evidence_collection_failed" {
+		t.Fatalf("failure = %#v", result.Failure)
 	}
 }
 
@@ -204,7 +251,22 @@ func (collector mapCollector) Collect(_ context.Context, request EvidenceRequest
 	}
 	payload.RequestID = request.ID
 	payload.Operation = request.Operation
+	if payload.Facts == nil {
+		payload.Facts = map[string]any{}
+	}
+	if payload.EvidenceRefs == nil {
+		payload.EvidenceRefs = []string{}
+	}
 	return payload, nil
+}
+
+type timeoutCollector struct{}
+
+func (timeoutCollector) Collect(ctx context.Context, _ EvidenceRequest) (EvidencePayload, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return EvidencePayload{}, context.Canceled
+	}
+	return EvidencePayload{}, context.DeadlineExceeded
 }
 
 func needsEvidence(operation, privacy, id string) Result {
@@ -217,7 +279,7 @@ func needsEvidence(operation, privacy, id string) Result {
 			Reason:              "Need additional local evidence.",
 			ExpectedInformation: "Structured read-only facts.",
 			PrivacyClass:        privacy,
-			TimeoutSeconds:      15,
+			TimeoutSeconds:      1,
 		}},
 		Limitations: []string{"Evidence incomplete."},
 	}

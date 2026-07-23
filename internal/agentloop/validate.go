@@ -2,11 +2,15 @@ package agentloop
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/effexorxruser/EffexorWinPE/internal/diagnosis"
+	"github.com/effexorxruser/EffexorWinPE/internal/diagnostics"
+	"github.com/effexorxruser/EffexorWinPE/internal/gateway"
+	"github.com/effexorxruser/EffexorWinPE/internal/session"
 )
 
 const (
@@ -16,21 +20,54 @@ const (
 	MaxEvidenceRequests = 8
 	MaxAuditEvents      = 64
 	MaxLimitations      = 16
+	MaxEvidencePayload  = 256 << 10
 	DefaultLoopTimeout  = 90 // seconds, documented default for callers
 )
 
-func ValidateResult(result Result, priorRequestKeys []string) error {
+// DuplicateEvidenceError marks a repeated evidence request fingerprint.
+type DuplicateEvidenceError struct {
+	RequestID string
+	Key       string
+}
+
+func (err *DuplicateEvidenceError) Error() string {
+	return fmt.Sprintf("duplicate evidence request %q", err.Key)
+}
+
+// ValidationContext binds a proposal to the active report, session, and prior evidence.
+type ValidationContext struct {
+	Report           diagnostics.Report
+	Session          session.Session
+	PriorEvidence    []EvidencePayload
+	PriorRequestKeys []string
+	MaxRounds        int
+}
+
+func ValidateResult(result Result, ctx ValidationContext) error {
+	if err := ctx.Session.Validate(ctx.Report.ReportID); err != nil {
+		return fmt.Errorf("session context: %w", err)
+	}
+	if ctx.Report.SchemaVersion != diagnostics.SchemaVersion {
+		return fmt.Errorf("unsupported diagnostic schema %q", ctx.Report.SchemaVersion)
+	}
+	if ctx.Report.ReportID == "" {
+		return fmt.Errorf("report_id is required")
+	}
 	if result.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported agent-result schema %q", result.SchemaVersion)
 	}
-	if strings.TrimSpace(result.ReportID) == "" {
-		return fmt.Errorf("report_id is required")
+	if result.ReportID != ctx.Report.ReportID {
+		return fmt.Errorf("proposal report_id %q does not match report %q", result.ReportID, ctx.Report.ReportID)
 	}
 	if result.GeneratedAt.IsZero() {
 		return fmt.Errorf("generated_at is required")
 	}
-	if result.Round < 1 || result.Round > MaxRounds {
-		return fmt.Errorf("round must be between 1 and %d", MaxRounds)
+	maxRounds := ctx.MaxRounds
+	if maxRounds <= 0 || maxRounds > MaxRounds {
+		maxRounds = MaxRounds
+	}
+	if result.Round < 1 || result.Round > maxRounds {
+		return fmt.Errorf("round must be between 1 and %d", maxRounds)
 	}
 	if !oneOf(result.State, StateCompleted, StateNeedsMoreEvidence, StateBlocked, StateFailed) {
 		return fmt.Errorf("invalid agent state %q", result.State)
@@ -61,11 +98,11 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 
 	seenIDs := map[string]struct{}{}
 	seenKeys := map[string]struct{}{}
-	for _, prior := range priorRequestKeys {
+	for _, prior := range ctx.PriorRequestKeys {
 		seenKeys[prior] = struct{}{}
 	}
 	for _, request := range result.EvidenceRequests {
-		if err := ValidateEvidenceRequest(request); err != nil {
+		if err := ValidateEvidenceRequest(request, ctx.Report); err != nil {
 			return err
 		}
 		if err := RejectCommandText("evidence reason", request.Reason); err != nil {
@@ -80,7 +117,7 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 		seenIDs[request.ID] = struct{}{}
 		key := CanonicalRequestKey(request)
 		if _, duplicate := seenKeys[key]; duplicate {
-			return fmt.Errorf("duplicate evidence request %q", key)
+			return &DuplicateEvidenceError{RequestID: request.ID, Key: key}
 		}
 		seenKeys[key] = struct{}{}
 	}
@@ -96,8 +133,28 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 		if result.Block != nil || result.Failure != nil {
 			return fmt.Errorf("completed result must not include block or failure details")
 		}
-		if err := validateAssessmentText(*result.Assessment); err != nil {
+		if result.Assessment.ReportID != ctx.Report.ReportID {
+			return fmt.Errorf("assessment report_id %q does not match report %q", result.Assessment.ReportID, ctx.Report.ReportID)
+		}
+		if result.Assessment.Mode != diagnosis.ModeOnlineAgent {
+			return fmt.Errorf("assessment mode must be %q", diagnosis.ModeOnlineAgent)
+		}
+		if result.Assessment.SchemaVersion != diagnosis.SchemaVersion {
+			return fmt.Errorf("unsupported diagnosis schema %q", result.Assessment.SchemaVersion)
+		}
+		if result.Assessment.GeneratedAt.IsZero() {
+			return fmt.Errorf("assessment generated_at is required")
+		}
+		if err := rejectAssessmentCommandText(*result.Assessment); err != nil {
 			return err
+		}
+		diagnosisRequest := gateway.DiagnosisRequest{
+			DiagnosticReport:   ctx.Report,
+			Session:            ctx.Session,
+			TechnicianApproved: true,
+		}
+		if err := gateway.ValidateOnlineAssessmentWithEvidence(*result.Assessment, diagnosisRequest, collectedEvidenceRefs(ctx.PriorEvidence)); err != nil {
+			return fmt.Errorf("gateway assessment validation: %w", err)
 		}
 	case StateNeedsMoreEvidence:
 		if len(result.EvidenceRequests) == 0 {
@@ -116,6 +173,9 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 		if err := validateStatusDetail("block", *result.Block); err != nil {
 			return err
 		}
+		if len(result.EvidenceRequests) != 0 {
+			return fmt.Errorf("blocked result must not request more evidence")
+		}
 		if result.Failure != nil {
 			return fmt.Errorf("blocked result must not include failure details")
 		}
@@ -129,6 +189,9 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 		if err := validateStatusDetail("failure", *result.Failure); err != nil {
 			return err
 		}
+		if len(result.EvidenceRequests) != 0 {
+			return fmt.Errorf("failed result must not request more evidence")
+		}
 		if result.Block != nil {
 			return fmt.Errorf("failed result must not include block details")
 		}
@@ -139,7 +202,26 @@ func ValidateResult(result Result, priorRequestKeys []string) error {
 	return nil
 }
 
-func validateAssessmentText(assessment diagnosis.Assessment) error {
+func collectedEvidenceRefs(payloads []EvidencePayload) []string {
+	refs := make([]string, 0, len(payloads))
+	seen := map[string]struct{}{}
+	for _, payload := range payloads {
+		for _, ref := range payload.EvidenceRefs {
+			ref = strings.TrimSpace(ref)
+			if ref == "" {
+				continue
+			}
+			if _, ok := seen[ref]; ok {
+				continue
+			}
+			seen[ref] = struct{}{}
+			refs = append(refs, ref)
+		}
+	}
+	return refs
+}
+
+func rejectAssessmentCommandText(assessment diagnosis.Assessment) error {
 	if err := RejectCommandText("headline", assessment.Summary.Headline); err != nil {
 		return err
 	}
@@ -166,12 +248,6 @@ func validateAssessmentText(assessment diagnosis.Assessment) error {
 		if err := RejectCommandText("next-step rationale", step.Rationale); err != nil {
 			return err
 		}
-		if !isTechnicianNextStep(step.Operation) {
-			return fmt.Errorf("next step %q uses unknown operation %q", step.ID, step.Operation)
-		}
-		if step.Risk != diagnosis.RiskReadOnly || step.RequiresConfirmation {
-			return fmt.Errorf("agent loop may propose read-only next steps only")
-		}
 	}
 	for _, limitation := range assessment.Limitations {
 		if err := RejectCommandText("assessment limitation", limitation); err != nil {
@@ -179,19 +255,6 @@ func validateAssessmentText(assessment diagnosis.Assessment) error {
 		}
 	}
 	return nil
-}
-
-func isTechnicianNextStep(operation string) bool {
-	// Technician-facing next steps stay aligned with diagnosis.schema.json /
-	// the existing gateway MVP catalog. Evidence requests may use a wider
-	// read-only allowlist during the loop.
-	switch operation {
-	case OpReviewMissingSources, OpIdentifyWindowsInstallation, OpSelectWindowsTarget,
-		OpInspectBCDEntries, OpInspectStorageHealth, OpReviewBitLockerAccess:
-		return true
-	default:
-		return false
-	}
 }
 
 func validateStatusDetail(name string, detail StatusDetail) error {
@@ -244,4 +307,9 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
+}
+
+func IsDuplicateEvidence(err error) bool {
+	var duplicate *DuplicateEvidenceError
+	return errors.As(err, &duplicate)
 }

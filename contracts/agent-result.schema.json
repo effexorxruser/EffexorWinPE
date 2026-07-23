@@ -2,66 +2,174 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://effexorwinpe.local/contracts/agent-result.schema.json",
   "title": "EffexorWinPE online agent loop result",
-  "type": "object",
-  "additionalProperties": false,
-  "required": [
-    "schema_version",
-    "report_id",
-    "generated_at",
-    "state",
-    "round",
-    "evidence_requests",
-    "audit_timeline",
-    "limitations"
+  "oneOf": [
+    { "$ref": "#/$defs/completed_result" },
+    { "$ref": "#/$defs/needs_more_evidence_result" },
+    { "$ref": "#/$defs/blocked_result" },
+    { "$ref": "#/$defs/failed_result" }
   ],
-  "properties": {
-    "schema_version": { "const": "0.1.0" },
-    "report_id": { "type": "string", "minLength": 1 },
-    "generated_at": { "type": "string", "format": "date-time" },
-    "state": {
-      "enum": ["completed", "needs_more_evidence", "blocked", "failed"]
+  "$defs": {
+    "common_properties": {
+      "schema_version": { "const": "0.1.0" },
+      "report_id": { "type": "string", "minLength": 1 },
+      "generated_at": { "type": "string", "format": "date-time" },
+      "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+      "audit_timeline": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/audit_event" }
+      },
+      "limitations": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1
+      }
     },
-    "round": { "type": "integer", "minimum": 1, "maximum": 3 },
-    "assessment": { "$ref": "./diagnosis.schema.json" },
-    "evidence_requests": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/evidence_request" }
-    },
-    "block": { "$ref": "#/$defs/status_detail" },
-    "failure": { "$ref": "#/$defs/status_detail" },
-    "audit_timeline": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/audit_event" }
-    },
-    "limitations": {
-      "type": "array",
-      "items": { "type": "string", "minLength": 1 },
-      "minItems": 1
-    }
-  },
-  "allOf": [
-    {
-      "if": { "properties": { "state": { "const": "completed" } } },
-      "then": { "required": ["assessment"] }
-    },
-    {
-      "if": { "properties": { "state": { "const": "needs_more_evidence" } } },
-      "then": {
-        "properties": {
-          "evidence_requests": { "minItems": 1 }
+    "completed_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "assessment",
+        "evidence_requests",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "completed" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "assessment": { "$ref": "https://effexorwinpe.local/contracts/diagnosis.schema.json" },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
         }
       }
     },
-    {
-      "if": { "properties": { "state": { "const": "blocked" } } },
-      "then": { "required": ["block"] }
+    "needs_more_evidence_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "needs_more_evidence" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
     },
-    {
-      "if": { "properties": { "state": { "const": "failed" } } },
-      "then": { "required": ["failure"] }
-    }
-  ],
-  "$defs": {
+    "blocked_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "block",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "blocked" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "block": { "$ref": "#/$defs/status_detail" },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "failed_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "failure",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "failed" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "failure": { "$ref": "#/$defs/status_detail" },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
     "status_detail": {
       "type": "object",
       "additionalProperties": false,

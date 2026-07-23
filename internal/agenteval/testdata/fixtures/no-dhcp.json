@@ -219,6 +219,7 @@
   },
   "expected": {
     "final_state": "completed",
+    "final_round": 2,
     "finding_ids": [
       "network.no-dhcp"
     ],

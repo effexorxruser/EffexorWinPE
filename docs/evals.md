@@ -37,13 +37,15 @@ The minimum set covers:
 go test ./internal/agenteval -count=1
 ```
 
+Scenario fixtures use harness name `scenario-eval`. Policy regressions use the separate `TestPolicyRegressionHarness` (`policy-regression`).
+
 Optional machine-readable report path:
 
 ```bash
-EFFEXORWINPE_EVAL_OUT=/tmp/effexorwinpe-eval.json go test ./internal/agenteval -count=1
+EFFEXORWINPE_EVAL_OUT=/tmp/effexorwinpe-eval.json go test ./internal/agenteval -count=1 -run TestEvalFixtures
 ```
 
-The harness writes JSON with `schema_version`, pass/fail counts, per-case finding IDs, operations seen, audit kinds, and failure strings.
+The harness writes JSON with `schema_version`, `harness`, pass/fail counts, per-case finding IDs, operations seen, audit kinds, and failure strings. Fixtures require exact `finding_ids`, `final_round`, and optional `failure_code` / `block_code`.
 
 ## Regenerating fixtures
 

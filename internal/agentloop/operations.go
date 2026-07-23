@@ -5,6 +5,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/effexorxruser/EffexorWinPE/internal/diagnostics"
 )
 
 // Closed read-only evidence operations. No repair or shell execution is implied.
@@ -130,8 +132,8 @@ func IsAllowedEvidenceOperation(operation string) bool {
 }
 
 // ValidateEvidenceRequest checks operation membership, privacy class, arguments,
-// and timeout against the closed allowlist.
-func ValidateEvidenceRequest(request EvidenceRequest) error {
+// timeout, and that argument values exist in the current diagnostic report.
+func ValidateEvidenceRequest(request EvidenceRequest, report diagnostics.Report) error {
 	if err := validateID("evidence request", request.ID); err != nil {
 		return err
 	}
@@ -175,6 +177,9 @@ func ValidateEvidenceRequest(request EvidenceRequest) error {
 			if err := boundedText("argument "+name, str, 512); err != nil {
 				return err
 			}
+		}
+		if err := argumentMatchesReport(name, value, report); err != nil {
+			return fmt.Errorf("evidence request %q: %w", request.ID, err)
 		}
 	}
 	return nil

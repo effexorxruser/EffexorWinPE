@@ -134,6 +134,13 @@ func collectJSONPaths(prefix string, value any, result map[string]struct{}) {
 }
 
 func ValidateOnlineAssessment(assessment diagnosis.Assessment, request DiagnosisRequest) error {
+	return ValidateOnlineAssessmentWithEvidence(assessment, request, nil)
+}
+
+// ValidateOnlineAssessmentWithEvidence is the shared online assessment policy used
+// by the gateway and the multi-step agent loop. extraEvidenceRefs are unioned into
+// the report/session evidence catalog (for locally collected loop evidence).
+func ValidateOnlineAssessmentWithEvidence(assessment diagnosis.Assessment, request DiagnosisRequest, extraEvidenceRefs []string) error {
 	if assessment.SchemaVersion != diagnosis.SchemaVersion {
 		return fmt.Errorf("unsupported diagnosis schema %q", assessment.SchemaVersion)
 	}
@@ -166,8 +173,15 @@ func ValidateOnlineAssessment(assessment diagnosis.Assessment, request Diagnosis
 	if err != nil {
 		return fmt.Errorf("build evidence catalog: %w", err)
 	}
-	evidenceSet := make(map[string]struct{}, len(validEvidence))
+	evidenceSet := make(map[string]struct{}, len(validEvidence)+len(extraEvidenceRefs))
 	for _, reference := range validEvidence {
+		evidenceSet[reference] = struct{}{}
+	}
+	for _, reference := range extraEvidenceRefs {
+		reference = strings.TrimSpace(reference)
+		if reference == "" {
+			return fmt.Errorf("extra evidence reference is empty")
+		}
 		evidenceSet[reference] = struct{}{}
 	}
 	sourceSet := map[string]struct{}{}
