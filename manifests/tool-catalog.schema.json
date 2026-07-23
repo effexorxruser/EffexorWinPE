@@ -44,7 +44,7 @@
     "profileMaturity": {
       "type": "string",
       "enum": ["conceptual", "experimental", "release_candidate", "released"],
-      "description": "Profiles that still reference candidate or planned tools must stay conceptual or experimental."
+      "description": "release_candidate and released may only reference tools with integration_status approved or shipped."
     },
     "category": {
       "type": "string",
@@ -158,6 +158,12 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "$ref": "#/$defs/nonEmptyString" }
+        },
+        "profile_dependencies": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/profileId" },
+          "description": "Other profiles whose tool_ids (transitively) may satisfy tool dependency closure for this profile."
         }
       }
     },

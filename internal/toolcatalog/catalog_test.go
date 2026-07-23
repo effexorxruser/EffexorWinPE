@@ -3,6 +3,7 @@ package toolcatalog_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"path"
@@ -44,6 +45,7 @@ func TestToolCatalogIntegrity(t *testing.T) {
 		toolsByID[tool.ID] = tool
 	}
 
+	profilesByID := make(map[string]catalogProfile, len(catalog.Profiles))
 	profileIDs := make(map[string]struct{}, len(catalog.Profiles))
 	requiredProfiles := map[string]struct{}{
 		"minimal-diagnostics": {},
@@ -57,6 +59,7 @@ func TestToolCatalogIntegrity(t *testing.T) {
 			t.Fatalf("duplicate profile id %q", profile.ID)
 		}
 		profileIDs[profile.ID] = struct{}{}
+		profilesByID[profile.ID] = profile
 		delete(requiredProfiles, profile.ID)
 
 		for _, toolID := range profile.ToolIDs {
@@ -64,10 +67,25 @@ func TestToolCatalogIntegrity(t *testing.T) {
 				t.Fatalf("profile %q references unknown tool id %q", profile.ID, toolID)
 			}
 		}
-		assertProfileMaturity(t, profile, toolsByID)
+		if err := profileMaturityAllowed(profile, toolsByID); err != nil {
+			t.Fatal(err)
+		}
 	}
 	for missing := range requiredProfiles {
 		t.Fatalf("missing required release profile %q", missing)
+	}
+	for _, profile := range catalog.Profiles {
+		for _, depProfile := range profile.ProfileDependencies {
+			if depProfile == profile.ID {
+				t.Fatalf("profile %q depends on itself", profile.ID)
+			}
+			if _, ok := profilesByID[depProfile]; !ok {
+				t.Fatalf("profile %q profile_dependencies references unknown profile %q", profile.ID, depProfile)
+			}
+		}
+	}
+	if cycle := findProfileDependencyCycle(profilesByID); cycle != "" {
+		t.Fatalf("profile_dependencies cycle detected: %s", cycle)
 	}
 
 	deps := make(map[string][]string, len(catalog.Tools))
@@ -86,6 +104,12 @@ func TestToolCatalogIntegrity(t *testing.T) {
 		t.Fatalf("dependency cycle detected: %s", cycle)
 	}
 
+	for _, profile := range catalog.Profiles {
+		if err := profileDependencyClosure(profile, profilesByID, toolsByID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	minimal := findProfile(t, catalog, "minimal-diagnostics")
 	for _, toolID := range minimal.ToolIDs {
 		tool := toolsByID[toolID]
@@ -96,6 +120,148 @@ func TestToolCatalogIntegrity(t *testing.T) {
 		}
 		if toolID == "winpe-diskpart" {
 			t.Fatal("minimal-diagnostics must not include winpe-diskpart")
+		}
+	}
+}
+
+func TestToolCatalogProfileDependencyClosureRegression(t *testing.T) {
+	t.Parallel()
+	toolsByID := map[string]catalogTool{
+		"root":   {ID: "root", Dependencies: nil, IntegrationStatus: "shipped"},
+		"child":  {ID: "child", Dependencies: []string{"root"}, IntegrationStatus: "shipped"},
+		"leaf":   {ID: "leaf", Dependencies: []string{"child"}, IntegrationStatus: "candidate"},
+		"other":  {ID: "other", Dependencies: nil, IntegrationStatus: "shipped"},
+		"shared": {ID: "shared", Dependencies: nil, IntegrationStatus: "shipped"},
+	}
+	profiles := map[string]catalogProfile{
+		"base": {
+			ID: "base", Maturity: "experimental",
+			ToolIDs: []string{"root", "shared"},
+		},
+		"broken": {
+			ID: "broken", Maturity: "conceptual",
+			ToolIDs: []string{"leaf"},
+		},
+		"closed-inline": {
+			ID: "closed-inline", Maturity: "conceptual",
+			ToolIDs: []string{"leaf", "child", "root"},
+		},
+		"via-profile-dep": {
+			ID: "via-profile-dep", Maturity: "conceptual",
+			ToolIDs:             []string{"leaf", "child"},
+			ProfileDependencies: []string{"base"},
+		},
+	}
+
+	if err := profileDependencyClosure(profiles["broken"], profiles, toolsByID); err == nil {
+		t.Fatal("expected missing transitive dependency to fail")
+	}
+	if err := profileDependencyClosure(profiles["closed-inline"], profiles, toolsByID); err != nil {
+		t.Fatalf("inline closure: %v", err)
+	}
+	if err := profileDependencyClosure(profiles["via-profile-dep"], profiles, toolsByID); err != nil {
+		t.Fatalf("profile_dependencies closure: %v", err)
+	}
+}
+
+func TestToolCatalogReleaseMaturityRegression(t *testing.T) {
+	t.Parallel()
+	toolsByID := map[string]catalogTool{
+		"ok-shipped":  {ID: "ok-shipped", IntegrationStatus: "shipped"},
+		"ok-approved": {ID: "ok-approved", IntegrationStatus: "approved"},
+		"bad-plan":    {ID: "bad-plan", IntegrationStatus: "planned"},
+		"bad-cand":    {ID: "bad-cand", IntegrationStatus: "candidate"},
+		"bad-rej":     {ID: "bad-rej", IntegrationStatus: "rejected"},
+		"bad-block":   {ID: "bad-block", IntegrationStatus: "policy_blocked"},
+	}
+
+	tests := []struct {
+		name    string
+		profile catalogProfile
+		wantErr bool
+	}{
+		{
+			name: "released only shipped approved",
+			profile: catalogProfile{
+				ID: "p", Maturity: "released",
+				ToolIDs: []string{"ok-shipped", "ok-approved"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "release_candidate rejects planned",
+			profile: catalogProfile{
+				ID: "p", Maturity: "release_candidate",
+				ToolIDs: []string{"ok-shipped", "bad-plan"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "released rejects candidate",
+			profile: catalogProfile{
+				ID: "p", Maturity: "released",
+				ToolIDs: []string{"bad-cand"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "released rejects rejected",
+			profile: catalogProfile{
+				ID: "p", Maturity: "released",
+				ToolIDs: []string{"ok-shipped", "bad-rej"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "release_candidate rejects policy_blocked",
+			profile: catalogProfile{
+				ID: "p", Maturity: "release_candidate",
+				ToolIDs: []string{"bad-block"},
+			},
+			wantErr: true,
+		},
+		{
+			name: "conceptual allows planned",
+			profile: catalogProfile{
+				ID: "p", Maturity: "conceptual",
+				ToolIDs: []string{"bad-plan", "bad-cand"},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			err := profileMaturityAllowed(test.profile, toolsByID)
+			if test.wantErr && err == nil {
+				t.Fatal("error = nil, want failure")
+			}
+			if !test.wantErr && err != nil {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestToolCatalogMicrosoftLicenseReviewPending(t *testing.T) {
+	t.Parallel()
+	catalog := loadCatalog(t)
+	for _, tool := range catalog.Tools {
+		switch tool.License {
+		case "microsoft-winpe-component", "microsoft-windows":
+		default:
+			continue
+		}
+		if tool.LicenseReviewStatus != "pending" {
+			t.Fatalf("Microsoft tool %q license_review_status = %q, want pending until ADK/WinPE terms are reviewed",
+				tool.ID, tool.LicenseReviewStatus)
+		}
+		if tool.CommercialUse != "unknown" || tool.Redistribution != "review_required" {
+			t.Fatalf("Microsoft tool %q must keep commercial_use=unknown redistribution=review_required", tool.ID)
+		}
+		if tool.ReviewedAt != nil {
+			t.Fatalf("Microsoft tool %q reviewed_at must be null while pending", tool.ID)
 		}
 	}
 }
@@ -168,6 +334,17 @@ func TestToolCatalogRequiredFieldsPresent(t *testing.T) {
 	}
 	if _, ok := findToolOptional(catalog, "oem-firmware-updater-policy"); !ok {
 		t.Fatal("expected oem-firmware-updater-policy template")
+	}
+
+	dataRecovery := findProfile(t, catalog, "data-recovery")
+	hasSystemRescue := false
+	for _, id := range dataRecovery.ToolIDs {
+		if id == "systemrescue-live" {
+			hasSystemRescue = true
+		}
+	}
+	if !hasSystemRescue {
+		t.Fatal("data-recovery must include systemrescue-live for ddrescue-linux dependency closure")
 	}
 }
 
@@ -289,6 +466,16 @@ func TestToolCatalogSchemaRejectsInvalidInstances(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "invalid profile_dependencies id",
+			mutate: func(doc map[string]any) {
+				profiles := doc["profiles"].([]any)
+				profile := cloneMap(profiles[0].(map[string]any))
+				profile["profile_dependencies"] = []any{"not-a-real-profile"}
+				doc["profiles"] = []any{profile}
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, test := range tests {
@@ -334,9 +521,10 @@ type catalogFile struct {
 }
 
 type catalogProfile struct {
-	ID       string   `json:"id"`
-	Maturity string   `json:"maturity"`
-	ToolIDs  []string `json:"tool_ids"`
+	ID                  string   `json:"id"`
+	Maturity            string   `json:"maturity"`
+	ToolIDs             []string `json:"tool_ids"`
+	ProfileDependencies []string `json:"profile_dependencies"`
 }
 
 type catalogTool struct {
@@ -428,25 +616,93 @@ func findToolOptional(catalog catalogFile, id string) (catalogTool, bool) {
 	return catalogTool{}, false
 }
 
-func assertProfileMaturity(t *testing.T, profile catalogProfile, toolsByID map[string]catalogTool) {
-	t.Helper()
-	hasIncomplete := false
-	for _, toolID := range profile.ToolIDs {
-		switch toolsByID[toolID].IntegrationStatus {
-		case "candidate", "planned":
-			hasIncomplete = true
-		}
-	}
+func profileMaturityAllowed(profile catalogProfile, toolsByID map[string]catalogTool) error {
 	switch profile.Maturity {
 	case "conceptual", "experimental":
-		return
+		return nil
 	case "release_candidate", "released":
-		if hasIncomplete {
-			t.Fatalf("profile %q maturity %q includes candidate/planned tools", profile.ID, profile.Maturity)
+		for _, toolID := range profile.ToolIDs {
+			status := toolsByID[toolID].IntegrationStatus
+			switch status {
+			case "approved", "shipped":
+			case "candidate", "planned", "rejected", "policy_blocked":
+				return fmt.Errorf("profile %q maturity %q forbids tool %q with integration_status %q",
+					profile.ID, profile.Maturity, toolID, status)
+			default:
+				return fmt.Errorf("profile %q maturity %q forbids tool %q with integration_status %q",
+					profile.ID, profile.Maturity, toolID, status)
+			}
 		}
+		return nil
 	default:
-		t.Fatalf("profile %q has unknown maturity %q", profile.ID, profile.Maturity)
+		return fmt.Errorf("profile %q has unknown maturity %q", profile.ID, profile.Maturity)
 	}
+}
+
+func profileDependencyClosure(profile catalogProfile, profilesByID map[string]catalogProfile, toolsByID map[string]catalogTool) error {
+	available, err := availableToolsForProfile(profile, profilesByID)
+	if err != nil {
+		return err
+	}
+	for _, toolID := range profile.ToolIDs {
+		tool, ok := toolsByID[toolID]
+		if !ok {
+			return fmt.Errorf("profile %q references unknown tool %q", profile.ID, toolID)
+		}
+		for _, required := range transitiveToolDependencies(toolID, toolsByID) {
+			if _, ok := available[required]; !ok {
+				return fmt.Errorf("profile %q tool %q missing transitive dependency %q in tool_ids or profile_dependencies",
+					profile.ID, tool.ID, required)
+			}
+		}
+	}
+	return nil
+}
+
+func availableToolsForProfile(profile catalogProfile, profilesByID map[string]catalogProfile) (map[string]struct{}, error) {
+	available := make(map[string]struct{})
+	for _, toolID := range profile.ToolIDs {
+		available[toolID] = struct{}{}
+	}
+
+	seenProfiles := map[string]struct{}{profile.ID: {}}
+	queue := append([]string(nil), profile.ProfileDependencies...)
+	for len(queue) > 0 {
+		depID := queue[0]
+		queue = queue[1:]
+		if _, seen := seenProfiles[depID]; seen {
+			continue
+		}
+		seenProfiles[depID] = struct{}{}
+		dep, ok := profilesByID[depID]
+		if !ok {
+			return nil, fmt.Errorf("profile %q profile_dependencies references unknown profile %q", profile.ID, depID)
+		}
+		for _, toolID := range dep.ToolIDs {
+			available[toolID] = struct{}{}
+		}
+		queue = append(queue, dep.ProfileDependencies...)
+	}
+	return available, nil
+}
+
+func transitiveToolDependencies(toolID string, toolsByID map[string]catalogTool) []string {
+	seen := map[string]struct{}{}
+	var ordered []string
+	var walk func(string)
+	walk = func(id string) {
+		tool := toolsByID[id]
+		for _, dep := range tool.Dependencies {
+			if _, ok := seen[dep]; ok {
+				continue
+			}
+			seen[dep] = struct{}{}
+			ordered = append(ordered, dep)
+			walk(dep)
+		}
+	}
+	walk(toolID)
+	return ordered
 }
 
 func assertLicenseReviewConsistency(t *testing.T, tool catalogTool) {
@@ -532,4 +788,12 @@ func findDependencyCycle(deps map[string][]string) string {
 		}
 	}
 	return ""
+}
+
+func findProfileDependencyCycle(profiles map[string]catalogProfile) string {
+	deps := make(map[string][]string, len(profiles))
+	for id, profile := range profiles {
+		deps[id] = append([]string(nil), profile.ProfileDependencies...)
+	}
+	return findDependencyCycle(deps)
 }

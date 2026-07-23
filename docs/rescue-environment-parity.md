@@ -29,7 +29,7 @@ Related artifacts:
 
 ## Release profiles (summary)
 
-Defined in `manifests/tool-catalog.json` → `profiles`. Each profile has a `maturity` of `conceptual`, `experimental`, `release_candidate`, or `released`. Profiles that still reference `candidate` or `planned` tools must stay `conceptual` or `experimental` so they are not mistaken for shippable payloads.
+Defined in `manifests/tool-catalog.json` → `profiles`. Each profile has a `maturity` of `conceptual`, `experimental`, `release_candidate`, or `released`. `release_candidate` and `released` may only reference tools with `integration_status` `approved` or `shipped`. Tool dependency closure is transitive: every dependency must appear in the profile `tool_ids` or be satisfied through `profile_dependencies`.
 
 | Profile | Intent |
 | --- | --- |
@@ -496,7 +496,7 @@ Defined in `manifests/tool-catalog.json` → `profiles`. Each profile has a `mat
 ## Catalog maintenance rules
 
 1. First-party EffexorWinPE components use MIT (`LICENSE`). Do not invent a `proprietary-effexor` license for collector, agent, shell, gateway client, or planned first-party helpers.
-2. Every tool records `license_review_status`, `review_source` (https), and `reviewed_at`. While status is `pending`, `commercial_use` must stay `unknown` and `redistribution` must stay `review_required`.
+2. Every tool records `license_review_status`, `review_source` (https), and `reviewed_at`. While status is `pending`, `commercial_use` must stay `unknown` and `redistribution` must stay `review_required`. Microsoft command documentation alone is not a completed ADK/WinPE license review.
 3. `official_url` / `review_source` are https URIs to documentation or project homes, never direct binary downloads.
 4. `download_mode` of `build_time_fetch` or `technician_cache` is allowed only after redistribution is `allowed` or `restricted` with a recorded decision.
 5. Prefer first-party + Microsoft WinPE components over GUI clones of Strelec menus.
