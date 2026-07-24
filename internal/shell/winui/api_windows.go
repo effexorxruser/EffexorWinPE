@@ -25,6 +25,7 @@ var (
 	procTranslateMessage              = modUser32.NewProc("TranslateMessage")
 	procDispatchMessageW              = modUser32.NewProc("DispatchMessageW")
 	procPostQuitMessage               = modUser32.NewProc("PostQuitMessage")
+	procDestroyWindow                 = modUser32.NewProc("DestroyWindow")
 	procLoadCursorW                   = modUser32.NewProc("LoadCursorW")
 	procSetWindowTextW                = modUser32.NewProc("SetWindowTextW")
 	procGetClientRect                 = modUser32.NewProc("GetClientRect")
