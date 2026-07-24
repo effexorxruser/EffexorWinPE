@@ -4,9 +4,11 @@ package winui
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"unsafe"
@@ -73,6 +75,11 @@ type app struct {
 
 // Run starts the native Win32 message loop.
 func Run(cfg Config) error {
+	// Win32 windows and their message queues are thread-affine; the creating
+	// OS thread must also own the message loop.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if cfg.Bundle == nil {
 		b, err := i18n.New(i18n.Default)
 		if err != nil {
@@ -152,9 +159,13 @@ func Run(cfg Config) error {
 
 	var m msg
 	for {
-		ret, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
-		if int32(ret) <= 0 {
-			break
+		ret, _, callErr := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
+		switch int32(ret) {
+		case -1:
+			return fmt.Errorf("GetMessageW failed: %w", callErr)
+		case 0:
+			// WM_QUIT
+			return nil
 		}
 		// Intercept Esc before DispatchMessage so child controls with focus
 		// (LISTBOX/EDIT/BUTTON) cannot swallow kiosk exit.
@@ -165,7 +176,6 @@ func Run(cfg Config) error {
 		procTranslateMessage.Call(uintptr(unsafe.Pointer(&m)))
 		procDispatchMessageW.Call(uintptr(unsafe.Pointer(&m)))
 	}
-	return nil
 }
 
 func enableDPIAwareness() {
@@ -458,11 +468,16 @@ func (a *app) selectNav(screen string) {
 	}
 }
 
+// queueProgress is safe to call from a background goroutine: it only updates
+// the thread-safe queue and wakes the UI thread via PostMessage.
 func (a *app) queueProgress(p viewmodel.ProgressScreen) {
 	a.queue.PushProgress(p)
 	postMessage(a.hwnd, msgUIProgress, 0, 0)
 }
 
+// queueDone is safe to call from a background goroutine: it only updates the
+// thread-safe queue and wakes the UI thread via PostMessage. HWND mutations
+// happen later on the UI thread inside drainUIEvents.
 func (a *app) queueDone(res orchestrator.Result) {
 	a.queue.PushTerminal(res)
 	postMessage(a.hwnd, msgUIDone, 0, 0)
