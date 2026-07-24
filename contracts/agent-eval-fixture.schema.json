@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effexorwinpe.local/contracts/agent-eval-fixture.schema.json",
+  "title": "EffexorWinPE agent-loop eval fixture",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "description",
+    "report",
+    "session",
+    "provider_rounds",
+    "evidence_catalog",
+    "expected"
+  ],
+  "properties": {
+    "id": { "type": "string", "minLength": 1, "pattern": "^[a-z0-9-]+$" },
+    "description": { "type": "string", "minLength": 1 },
+    "report": { "type": "object" },
+    "session": { "type": "object" },
+    "provider_rounds": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "object" }
+    },
+    "evidence_catalog": {
+      "type": "object",
+      "additionalProperties": { "type": "object" }
+    },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "final_state",
+        "final_round",
+        "finding_ids",
+        "forbidden_claims",
+        "required_evidence_refs",
+        "allowed_operation_ids"
+      ],
+      "properties": {
+        "final_state": {
+          "enum": ["completed", "needs_more_evidence", "blocked", "failed"]
+        },
+        "final_round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "finding_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "forbidden_claims": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "required_evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "allowed_operation_ids": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "failure_code": { "type": "string", "minLength": 1 },
+        "block_code": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

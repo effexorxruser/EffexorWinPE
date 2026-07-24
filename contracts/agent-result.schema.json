@@ -1,0 +1,254 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://effexorwinpe.local/contracts/agent-result.schema.json",
+  "title": "EffexorWinPE online agent loop result",
+  "oneOf": [
+    { "$ref": "#/$defs/completed_result" },
+    { "$ref": "#/$defs/needs_more_evidence_result" },
+    { "$ref": "#/$defs/blocked_result" },
+    { "$ref": "#/$defs/failed_result" }
+  ],
+  "$defs": {
+    "common_properties": {
+      "schema_version": { "const": "0.1.0" },
+      "report_id": { "type": "string", "minLength": 1 },
+      "generated_at": { "type": "string", "format": "date-time" },
+      "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+      "audit_timeline": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/audit_event" }
+      },
+      "limitations": {
+        "type": "array",
+        "items": { "type": "string", "minLength": 1 },
+        "minItems": 1
+      }
+    },
+    "completed_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "assessment",
+        "evidence_requests",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "completed" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "assessment": { "$ref": "https://effexorwinpe.local/contracts/diagnosis.schema.json" },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "needs_more_evidence_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "needs_more_evidence" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "blocked_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "block",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "blocked" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "block": { "$ref": "#/$defs/status_detail" },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "failed_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "report_id",
+        "generated_at",
+        "state",
+        "round",
+        "evidence_requests",
+        "failure",
+        "audit_timeline",
+        "limitations"
+      ],
+      "properties": {
+        "schema_version": { "const": "0.1.0" },
+        "report_id": { "type": "string", "minLength": 1 },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "state": { "const": "failed" },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "evidence_requests": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "$ref": "#/$defs/evidence_request" }
+        },
+        "failure": { "$ref": "#/$defs/status_detail" },
+        "audit_timeline": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/audit_event" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        }
+      }
+    },
+    "status_detail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "message": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      }
+    },
+    "evidence_request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "operation",
+        "arguments",
+        "reason",
+        "expected_information",
+        "privacy_class",
+        "timeout_seconds"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "operation": {
+          "enum": [
+            "review_missing_sources",
+            "identify_windows_installation",
+            "select_windows_target",
+            "inspect_bcd_entries",
+            "inspect_storage_health",
+            "review_bitlocker_access",
+            "inspect_network_status",
+            "inspect_partition_layout",
+            "inspect_boot_firmware"
+          ]
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "integer", "boolean", "null"]
+          }
+        },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "expected_information": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "privacy_class": {
+          "enum": [
+            "machine_inventory",
+            "boot_config",
+            "storage_health",
+            "encryption_status",
+            "network_status"
+          ]
+        },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "maximum": 120 }
+      }
+    },
+    "audit_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at", "kind"],
+      "properties": {
+        "at": { "type": "string", "format": "date-time" },
+        "kind": {
+          "enum": [
+            "round_started",
+            "provider_proposed",
+            "evidence_requested",
+            "evidence_collected",
+            "duplicate_request_rejected",
+            "evidence_redacted",
+            "loop_completed",
+            "loop_blocked",
+            "loop_failed"
+          ]
+        },
+        "round": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "reference": { "type": "string", "maxLength": 256 },
+        "detail": { "type": "string", "maxLength": 2000 }
+      }
+    }
+  }
+}
