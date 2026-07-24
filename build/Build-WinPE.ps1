@@ -4,6 +4,8 @@ param(
     [string]$Architecture = "amd64",
     [string]$Language = "en-us",
     [string]$UILanguage = "ru-RU",
+    [ValidateSet("minimal-shell", "desktop-shell")]
+    [string]$ShellProfile = "minimal-shell",
     [string]$OutputDirectory = "",
     [switch]$IncludeLocalDrivers,
     [switch]$SkipOSLanguagePack,
@@ -18,7 +20,16 @@ if (-not $OutputDirectory) {
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $WorkingDirectory = Join-Path $OutputDirectory "winpe-$Architecture"
 $MountDirectory = Join-Path $WorkingDirectory "mount"
-$IsoPath = Join-Path $OutputDirectory "EffexorWinPE-$Architecture.iso"
+$IsoName = if ($ShellProfile -eq "desktop-shell") {
+    "EffexorWinPE-$Architecture-desktop-shell.iso"
+} else {
+    "EffexorWinPE-$Architecture.iso"
+}
+$IsoPath = Join-Path $OutputDirectory $IsoName
+$DesktopShellVendorDir = Join-Path $RepoRoot "third_party/winxshell"
+$DesktopShellBinary = Join-Path $DesktopShellVendorDir "WinXShell.exe"
+$DesktopShellProvenance = Join-Path $DesktopShellVendorDir "PROVENANCE.md"
+$DesktopShellLicense = Join-Path $DesktopShellVendorDir "LICENSE.LGPL-2.1.txt"
 
 $AdkRoot = Join-Path ${env:ProgramFiles(x86)} "Windows Kits/10/Assessment and Deployment Kit"
 $WinPERoot = Join-Path $AdkRoot "Windows Preinstallation Environment"
@@ -95,6 +106,49 @@ try {
         -DestinationRoot $PayloadTarget `
         -ManifestPath (Join-Path $RepoRoot "manifests/image-payload.json")
 
+    $StartnetShellLines = @(
+        "X:\EffexorWinPE\bin\effexorwinpe-shell.exe"
+    )
+    if ($ShellProfile -eq "desktop-shell") {
+        if (-not (Test-Path $DesktopShellBinary)) {
+            throw "ShellProfile desktop-shell requires $DesktopShellBinary (see docs/desktop-shell-spike.md)."
+        }
+        if (-not (Test-Path $DesktopShellProvenance)) {
+            throw "ShellProfile desktop-shell requires provenance at $DesktopShellProvenance."
+        }
+        if (-not (Test-Path $DesktopShellLicense)) {
+            throw "ShellProfile desktop-shell requires $DesktopShellLicense before redistribution."
+        }
+        $ExpectedHash = $null
+        foreach ($Line in Get-Content -LiteralPath $DesktopShellProvenance) {
+            if ($Line -match '(?i)SHA-256 of `WinXShell\.exe`\s*\|\s*([0-9A-Fa-f]{64})\s*\|') {
+                $ExpectedHash = $Matches[1].ToUpperInvariant()
+                break
+            }
+            if ($Line -match '(?i)^\|\s*SHA-256 of `WinXShell\.exe`\s*\|\s*([0-9A-Fa-f]{64})\s*\|') {
+                $ExpectedHash = $Matches[1].ToUpperInvariant()
+                break
+            }
+        }
+        if (-not $ExpectedHash -or $ExpectedHash -eq "TBD") {
+            throw "PROVENANCE.md must record a real SHA-256 for WinXShell.exe before desktop-shell builds."
+        }
+        $ActualHash = (Get-FileHash -LiteralPath $DesktopShellBinary -Algorithm SHA256).Hash.ToUpperInvariant()
+        if ($ActualHash -ne $ExpectedHash) {
+            throw "WinXShell.exe SHA-256 mismatch. expected=$ExpectedHash actual=$ActualHash"
+        }
+        $VendorTarget = Join-Path $PayloadTarget "third_party/winxshell"
+        New-Item -ItemType Directory -Force -Path $VendorTarget | Out-Null
+        Copy-Item -LiteralPath $DesktopShellBinary -Destination (Join-Path $VendorTarget "WinXShell.exe") -Force
+        Copy-Item -LiteralPath $DesktopShellLicense -Destination (Join-Path $VendorTarget "LICENSE.LGPL-2.1.txt") -Force
+        Copy-Item -LiteralPath $DesktopShellProvenance -Destination (Join-Path $VendorTarget "PROVENANCE.md") -Force
+        # Launch desktop shell first; Effexor GUI remains the technician app.
+        $StartnetShellLines = @(
+            "X:\EffexorWinPE\third_party\winxshell\WinXShell.exe -winpe",
+            "X:\EffexorWinPE\bin\effexorwinpe-shell.exe"
+        )
+    }
+
     if ($IncludeLocalDrivers) {
         $Drivers = Join-Path $RepoRoot "drivers/local"
         if (-not (Test-Path $Drivers)) {
@@ -114,16 +168,19 @@ try {
             -AdkRoot $AdkRoot
     }
 
-    # Launch the technician GUI shell. cmd.exe remains available after the shell
-    # exits so emergency console access is preserved if the UI cannot start.
+    # Launch the technician GUI (and optional experimental desktop shell).
+    # cmd.exe remains available after the shell exits so emergency console
+    # access is preserved if the UI cannot start.
+    $StartnetBody = ($StartnetShellLines -join "`r`n")
     $Startnet = @"
 wpeinit
 wpeutil InitializeNetwork
 if not exist X:\EffexorWinPE\reports mkdir X:\EffexorWinPE\reports
-X:\EffexorWinPE\bin\effexorwinpe-shell.exe
+$StartnetBody
 cmd.exe
 "@
     Set-Content -Path (Join-Path $MountDirectory "Windows/System32/startnet.cmd") -Value $Startnet -Encoding ASCII
+    Write-Host "ShellProfile=$ShellProfile ISO=$IsoPath"
 
     & dism.exe /Unmount-Image "/MountDir:$MountDirectory" /Commit
     if ($LASTEXITCODE -ne 0) {

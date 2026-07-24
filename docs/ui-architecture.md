@@ -79,10 +79,12 @@ External Go dependency: `golang.org/x/sys/windows` (UTF-16 helpers and HWND type
 ## Autostart
 
 `build/Build-WinPE.ps1` writes `Windows\System32\startnet.cmd` to launch the shell,
-then `cmd.exe`. An optional template is shipped at
-`payload/EffexorWinPE/config/winpeshl.ini.example` for operators who prefer
-`winpeshl.ini` instead of `startnet.cmd`. The default image does not install
-`winpeshl.ini`, avoiding a double launch.
+then `cmd.exe`. Default profile is `minimal-shell`. An experimental
+`desktop-shell` profile (separate ISO name, LGPL provenance gate) is documented
+in [desktop-shell-spike.md](desktop-shell-spike.md). An optional template is
+shipped at `payload/EffexorWinPE/config/winpeshl.ini.example` for operators who
+prefer `winpeshl.ini` instead of `startnet.cmd`. The default image does not
+install `winpeshl.ini`, avoiding a double launch.
 
 ## Safety
 
